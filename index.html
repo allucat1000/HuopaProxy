@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HuopaWebProxy</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      overflow: hidden;
+      margin: 0;
+    }
+    #page {
+      width: 100%;
+      height: calc(100% - 3.25em);
+      position: absolute;
+      top: 3.25em;
+      left: 0;
+      border: none;
+    }
+    input {
+        width: calc(100% - 3em);
+        height: 0.7em;
+        padding: 1em;
+        border-radius: 2em;
+        background-color: rgb(255, 255, 255);
+        border-color: rgb(200, 200, 200);
+        border-style: solid;
+        border-width: 1px;
+        position: absolute;
+        left: 50%;
+        top: 0.5em;
+        transform: translateX(-50%);
+    }
+  </style>
+</head>
+<body>
+  <input id="searchInput">
+  <iframe id="page"></iframe>
+  <script type="module">
+    const searchInput = document.getElementById("searchInput");
+    const targetUrl = "https://www.mojeek.com/"
+    let currentUrl = null;
+    const serverUrl = "http://localhost:3000/proxy";
+    const server = new URL(serverUrl);
+    const reloadHotkey = (e) => {
+        const isReload = (e.key === 'F5') || ((e.ctrlKey || e.metaKey) && e.code === 'KeyR');
+        if (!isReload) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentUrl) {
+            loadPage(currentUrl);
+        } else {
+            if (document.getElementById("page")) document.getElementById("page").remove();
+        }
+    };
+    window.addEventListener('keydown', reloadHotkey, { capture: true });
+
+    function attachIframeHotkey() {
+        try {
+        const w = frame.contentWindow;
+        w.addEventListener('keydown', reloadHotkey, { capture: true });
+        } catch {}
+    }
+
+    searchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (searchInput.value) loadPage(searchInput.value);
+        }
+    })
+    function deproxify(u, currentRemoteBase) {
+        try {
+        const abs = new URL(u, currentRemoteBase);
+        if (abs.origin === server.origin && abs.pathname === server.pathname) {
+            const inner = abs.searchParams.get("url");
+            return inner ? inner : abs.href;
+        }
+        return abs.href;
+        } catch { return u; }
+    }
+
+    async function loadPage(rawRemoteUrl, overrideHtml = null) {
+        let remoteUrl = rawRemoteUrl;
+        if (remoteUrl.includes(" ") || !remoteUrl.includes(".")) {
+            remoteUrl = "http://www.mojeek.com/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
+        }
+        if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
+            remoteUrl = "http://" + remoteUrl;
+        }
+        currentUrl = remoteUrl;
+        searchInput.value = "";
+        searchInput.placeholder = currentUrl;
+        const raw = overrideHtml
+        ? { text: async () => overrideHtml }
+        : await fetch(server.href + "?url=" + encodeURIComponent(remoteUrl), { credentials: 'include' });
+
+        const data = await raw.text();
+        if (document.getElementById("page")) document.getElementById("page").remove();
+        const frame = document.createElement("iframe");
+        frame.id = "page";
+        document.body.append(frame);
+        frame.contentWindow.addEventListener("keydown", (e) => {
+            if (e.key.toLowerCase() === "r" && e.ctrlKey) {
+                e.preventDefault();
+                loadPage(currentUrl);
+            }
+        });
+        const doc = frame.contentDocument || frame.contentWindow.document;
+
+        doc.open(); doc.write(data); doc.close();
+        attachIframeHotkey();
+
+        const win = frame.contentWindow;
+
+        // Safe nav patches (don’t redefine location property)
+        win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; };
+        try {
+        win.location.assign = (u) => loadPage(deproxify(u, remoteUrl));
+        win.location.replace = (u) => loadPage(deproxify(u, remoteUrl));
+        win.location.reload  = ()  => loadPage(remoteUrl);
+        } catch {}
+
+        // Links
+        doc.addEventListener("click", e => {
+        const a = e.target.closest("a");
+        if (!a) return;
+        e.preventDefault();
+        const rawHref = a.getAttribute("href") || a.href; // prefer raw attribute
+        const next = deproxify(rawHref, remoteUrl);
+        loadPage(next);
+        });
+
+        // Forms
+        doc.querySelectorAll("form").forEach(form => {
+        form.addEventListener("submit", e => {
+            e.preventDefault();
+            const rawAction = form.getAttribute("action") || "";
+            const action = deproxify(rawAction || remoteUrl, remoteUrl);
+
+            const fd = new FormData(form);
+            const params = new URLSearchParams(fd);
+            if ((form.method || "get").toLowerCase() === "post") {
+            fetch(server.href + "?url=" + encodeURIComponent(action), {
+                method: "POST",
+                body: params
+            }).then(r => r.text()).then(html => loadPage(action, html));
+            } else {
+            const urlWithQs = action + (action.includes("?") ? "&" : "?") + params.toString();
+            loadPage(urlWithQs);
+            }
+        });
+        });
+
+        // Meta refresh
+        doc.querySelectorAll('meta[http-equiv="refresh"]').forEach(meta => {
+        const content = meta.getAttribute("content") || "";
+        const match = content.match(/^\s*(\d+)\s*;\s*url=(.+)$/i);
+        if (match) {
+            const delay = parseInt(match[1], 10) * 1000;
+            const raw = match[2].trim();
+            const next = deproxify(raw, remoteUrl);
+            setTimeout(() => loadPage(next), delay);
+        }
+        });
+    }
+
+    window.loadPage = loadPage;
+    loadPage(targetUrl);
+  </script>
+</body>
+</html>
