@@ -12,7 +12,7 @@ try {
   cheerio = await import("https://esm.sh/cheerio@1.1.2");
 }
 
-const SERVER_URL = "http://localhost:3000/proxy";
+const SERVER_URL = "https://huopaproxy.allucat1000.deno.net/proxy";
 
 // --- Helpers ---
 function escapeHtml(str = "") {
