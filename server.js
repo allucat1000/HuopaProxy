@@ -188,7 +188,17 @@ if (express) {
 // --- Deno Deploy ---
 if (typeof Deno !== "undefined" && Deno.serve) {
   Deno.serve((req) => {
-    const { searchParams } = new URL(req.url);
-    return handleProxyCore(searchParams.get("url"), req.method, req.headers, req.body);
+    const url = new URL(req.url);
+    if (url.pathname === "/proxy") {
+      return handleProxyCore(
+        url.searchParams.get("url"),
+        req.method,
+        req.headers,
+        req.body
+      );
+    }
+
+    // fallback
+    return new Response("Not found", { status: 404 });
   });
 }
