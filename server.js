@@ -2,7 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import * as cheerio from "cheerio";
 
-const serverUrl = "http://localhost:3000/proxy";
+const serverUrl = "https://huopaproxy.onrender.com/proxy";
 const app = express();
 let internalErrorHtml = `
   <!DOCTYPE html>
@@ -385,4 +385,4 @@ app.use((req, res, next) => {
 app.get("/proxy", (req, res) => handleProxy(req, res, "GET"));
 app.post("/proxy", (req, res) => handleProxy(req, res, "POST"));
 
-app.listen(3000, () => console.log("Proxy running on http://localhost:3000"));
+app.listen(3000, () => console.log("Proxy running on: " + serverUrl));
