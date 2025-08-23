@@ -146,7 +146,8 @@ async function handleProxy(req, res, method) {
     }
     const response = await fetch(targetUrl, fetchOptions);
 
-    const setCookies = response.headers.raw()['set-cookie'];
+    const setCookies = response.headers.getSetCookie();
+
     if (setCookies) {
       res.setHeader('Set-Cookie', setCookies);
     }
@@ -384,4 +385,4 @@ app.use((req, res, next) => {
 app.get("/proxy", (req, res) => handleProxy(req, res, "GET"));
 app.post("/proxy", (req, res) => handleProxy(req, res, "POST"));
 
-app.listen(3000, () => console.log("Proxy running on http://localhost:3000"));
+app.listen(3000, () => console.log("Proxy running on https://huopaproxy.allucat1000.deno.net/proxy"));
