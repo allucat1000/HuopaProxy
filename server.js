@@ -1,7 +1,7 @@
 import express from "npm:express";
 import * as cheerio from "npm:cheerio";
 
-const serverUrl = "https://huopaproxy.allucat1000.deno.net/proxy";
+const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
 const app = express();
 let internalErrorHtml = `
   <!DOCTYPE html>
@@ -385,4 +385,4 @@ app.use((req, res, next) => {
 app.get("/proxy", (req, res) => handleProxy(req, res, "GET"));
 app.post("/proxy", (req, res) => handleProxy(req, res, "POST"));
 
-app.listen(3000, () => console.log("Proxy running on https://huopaproxy.allucat1000.deno.net/proxy"));
+app.listen(3000, () => console.log("Proxy running on https://allucat1000-huopaproxy-29.deno.dev/proxy"));
