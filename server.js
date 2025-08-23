@@ -146,6 +146,8 @@ async function handleProxy(req, res, method) {
       fetchOptions.body = req.bodyRaw || req;
     }
     const response = await fetch(targetUrl, fetchOptions);
+	if (response.status === 301 || response.status === 302)
+		return res.redirect(serverUrl + "?url=" + encodeURIComponent(response.headers.get("location")));
 
     const setCookies = response.headers.getSetCookie();
 
