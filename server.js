@@ -1,5 +1,6 @@
 import express from "npm:express";
 import * as cheerio from "npm:cheerio";
+import { Buffer } from "node:buffer";
 
 const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
 const app = express();
