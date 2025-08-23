@@ -2,7 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import * as cheerio from "cheerio";
 
-const serverUrl = "https://huopaproxy.onrender.com/proxy";
+const serverUrl = "https://huopaproxy.allucat1000.deno.net/proxy";
 const app = express();
 let internalErrorHtml = `
   <!DOCTYPE html>
