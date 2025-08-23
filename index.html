@@ -40,9 +40,9 @@
   <iframe id="page"></iframe>
   <script type="module">
     const searchInput = document.getElementById("searchInput");
-    const targetUrl = "https://www.mojeek.com/"
+    const targetUrl = "https://startpage.com/"
     let currentUrl = null;
-    const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
+    const serverUrl = "http://localhost:3000/proxy";
     const server = new URL(serverUrl);
     const reloadHotkey = (e) => {
         const isReload = (e.key === 'F5') || ((e.ctrlKey || e.metaKey) && e.code === 'KeyR');
@@ -84,10 +84,14 @@
     async function loadPage(rawRemoteUrl, overrideHtml = null) {
         let remoteUrl = rawRemoteUrl;
         if (remoteUrl.includes(" ") || !remoteUrl.includes(".")) {
-            remoteUrl = "http://www.mojeek.com/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
+            remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
         }
         if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
             remoteUrl = "http://" + remoteUrl;
+        }
+        if (remoteUrl === "about:blank") {
+            if (document.getElementById("page")) document.getElementById("page").remove();
+            return;
         }
         currentUrl = remoteUrl;
         searchInput.value = "";
