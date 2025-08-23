@@ -67,7 +67,7 @@
     searchInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
             e.preventDefault();
-            if (searchInput.value) loadPage(searchInput.value);
+            if (searchInput.value) loadPage(searchInput.value, true);
         }
     })
     function deproxify(u, currentRemoteBase) {
@@ -81,10 +81,12 @@
         } catch { return u; }
     }
 
-    async function loadPage(rawRemoteUrl, overrideHtml = null) {
+    async function loadPage(rawRemoteUrl, search = false) {
         let remoteUrl = rawRemoteUrl;
-        if (remoteUrl.includes(" ") || !remoteUrl.includes(".")) {
-            remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
+        if (search) {
+            if (remoteUrl.includes(" ") || !remoteUrl.includes(".")) {
+                remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
+            }
         }
         if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
             remoteUrl = "http://" + remoteUrl;
@@ -96,9 +98,7 @@
         currentUrl = remoteUrl;
         searchInput.value = "";
         searchInput.placeholder = currentUrl;
-        const raw = overrideHtml
-        ? { text: async () => overrideHtml }
-        : await fetch(server.href + "?url=" + encodeURIComponent(remoteUrl), { credentials: 'include' });
+        const raw = await fetch(server.href + "?url=" + encodeURIComponent(remoteUrl), { credentials: 'include' });
 
         const data = await raw.text();
         if (document.getElementById("page")) document.getElementById("page").remove();
