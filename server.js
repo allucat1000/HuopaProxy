@@ -158,7 +158,7 @@ async function handleProxy(req, res, method) {
         delete headers['sec-fetch-site'];
         delete headers['sec-fetch-mode'];
         delete headers['sec-fetch-dest'];
-        headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.';
+        headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3';
         headers['referer'] = req.query.url || '';
         if (req.headers.cookie) {
         headers.cookie = req.headers.cookie;
