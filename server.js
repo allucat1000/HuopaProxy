@@ -1,6 +1,7 @@
 import express from "npm:express";
 import * as cheerio from "npm:cheerio";
 import { Buffer } from "node:buffer";
+import { rateLimit } from 'npm:express-rate-limit'
 
 const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
 const app = express();
@@ -42,6 +43,16 @@ let internalErrorHtml = `
   </html>
 `;
 
+
+const limiter = rateLimit({
+	windowMs: 5 * 60 * 1000, // 10m
+	limit: 200,
+	standardHeaders: 'draft-8',
+	legacyHeaders: false,
+	ipv6Subnet: 64,
+})
+
+app.use(limiter)
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -146,8 +157,6 @@ async function handleProxy(req, res, method) {
       fetchOptions.body = req.bodyRaw || req;
     }
     const response = await fetch(targetUrl, fetchOptions);
-	if (response.status === 301 || response.status === 302)
-		return res.redirect(serverUrl + "?url=" + encodeURIComponent(response.headers.get("location")));
 
     const setCookies = response.headers.getSetCookie();
 
