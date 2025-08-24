@@ -2,9 +2,20 @@ import express from "npm:express";
 import * as cheerio from "npm:cheerio";
 import { Buffer } from "node:buffer";
 import { rateLimit } from 'npm:express-rate-limit'
+import { CookieJar } from "npm:tough-cookie";
+import fetchCookie from "npm:fetch-cookie";
 
 const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
 const app = express();
+
+const sessions = new Map();
+
+function getSessionJar(req) {
+  const sid = req.headers["x-session-id"] || req.ip;
+  if (!sessions.has(sid)) sessions.set(sid, new CookieJar());
+  return sessions.get(sid);
+}
+
 let internalErrorHtml = `
   <!DOCTYPE html>
   <html lang="en">
@@ -135,205 +146,212 @@ async function handleProxy(req, res, method) {
   </body>
   </html>
   `
-  if (!targetUrl) return res.status(400).send(missingUrlHtml);
-
-  try {
-    const targetOrigin = new URL(targetUrl).origin;
-
-    const headers = { ...req.headers };
-    delete headers.host;
-    headers.origin = targetOrigin;
-    delete headers['sec-fetch-site'];
-    delete headers['sec-fetch-mode'];
-    delete headers['sec-fetch-dest'];
-    headers['user-agent'] = headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...';
-    headers['referer'] = req.query.url || '';
-    if (req.headers.cookie) {
-      headers.cookie = req.headers.cookie;
-    }
-    let fetchOptions = { method, headers, redirect: "manual" };
-    fetchOptions.headers["accept-encoding"] = fetchOptions.headers["accept-encoding"].replace(", br, zstd", "");
-    if (method !== "GET" && method !== "HEAD") {
-      fetchOptions.body = req.bodyRaw || req;
-    }
-    const response = await fetch(targetUrl, fetchOptions);
-
-    const setCookies = response.headers.getSetCookie();
-
-    if (setCookies) {
-      res.setHeader('Set-Cookie', setCookies);
-    }
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (location) {
-        const resolved = new URL(location, targetUrl).href;
-        res.send(`
-          <!DOCTYPE html>
-          <html><head><meta charset="utf-8"></head>
-          <body>
-            <script>
-              if (window.top && window.top.loadPage) {
-                window.top.loadPage(${JSON.stringify(resolved)});
-              } else {
-                document.write("Redirect failed: parent loader not found");
-              }
-            </script>
-          </body></html>
-        `);
-        return;
-      }
-    }
-
-    let contentType = response.headers.get("content-type") || "";
-    res.set("content-type", contentType);
-    if (contentType.includes("text/html")) {
-      let body = await response.text();
-      const $ = cheerio.load(body);
-      const pageOrigin = new URL(targetUrl).origin;
-      const baseTag = `<base href="${pageOrigin}/">`;
-      $("head").prepend(baseTag + "\n");
-      const attrMap = {
-        a: "href",
-        link: "href",
-        img: "src",
-        script: "src",
-        iframe: "src",
-        frame: "src",
-        embed: "src",
-        object: "data",
-        source: "src",
-        track: "src",
-        audio: "src",
-        video: "src",
-        form: "action",
-        area: "href",
-      };
-
-      for (const [tag, attr] of Object.entries(attrMap)) {
-        $(tag).each((_, el) => {
-          let val = $(el).attr(attr);
-          if (val && !val.startsWith("data:") && !val.startsWith("javascript:")) {
-            $(el).attr(attr, rewriteUrl(serverUrl, new URL(val, targetUrl).href));
-          }
-        });
-      }
-
-      $("img, source").each((_, el) => {
-        let srcset = $(el).attr("srcset");
-        if (srcset) {
-          let rewritten = srcset
-            .split(",")
-            .map(entry => {
-              let [url, size] = entry.trim().split(/\s+/, 2);
-              return rewriteUrl(serverUrl, url) + (size ? " " + size : "");
-            })
-            .join(", ");
-          $(el).attr("srcset", rewritten);
-        }
-      });
-
-$("body").append(`
-  <script>
-  (function() {
-    const server = new URL(${JSON.stringify(serverUrl)});
-    const pageBase = new URL(${JSON.stringify(targetUrl)});
-
-    function deproxify(u) {
-      try {
-        const abs = new URL(u, pageBase);
-        if (abs.origin === server.origin && abs.pathname === server.pathname) {
-          const inner = abs.searchParams.get("url");
-          return inner || abs.href;
-        }
-        return abs.href;
-      } catch(e) { return u; }
-    }
-
-    // Wrap URL for proxying
-    function proxify(u) {
-      const resolved = new URL(deproxify(u), pageBase).href;
-      const p = new URL(server.href);
-      p.searchParams.set("url", resolved);
-      return p.href;
-    }
-
-    // Patch fetch
-    const origFetch = window.fetch;
-    window.fetch = function(input, init) {
-      if (typeof input === "string") input = proxify(input);
-      else if (input instanceof Request) {
-        const newReq = new Request(proxify(input.url), {
-          method: input.method,
-          headers: input.headers,
-          body: input.body,
-          mode: input.mode,
-          credentials: input.credentials,
-          cache: input.cache,
-          redirect: input.redirect,
-          referrer: input.referrer,
-          integrity: input.integrity,
-        });
-        input = newReq;
-      }
-      return origFetch(input, init);
-    };
-
-    // Patch XMLHttpRequest
-    const origOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url) {
-      arguments[1] = proxify(url);
-      return origOpen.apply(this, arguments);
-    };
-
-    // Patch WebSocket
-    const OrigWebSocket = window.WebSocket;
-    window.WebSocket = function(url, protocols) {
-      return new OrigWebSocket(proxify(url), protocols);
-    };
-    window.WebSocket.prototype = OrigWebSocket.prototype;
-
-    // Safe location overrides
-    try {
-      Object.defineProperty(top, "location", {
-        configurable: true,
-        enumerable: true,
-        get() { return top.location; },
-        set(url) { top.location.href = proxify(url); }
-      });
-    } catch(e) {}
+    if (!targetUrl) return res.status(400).send(missingUrlHtml);
 
     try {
-      Object.defineProperty(window, "location", {
-        configurable: true,
-        enumerable: true,
-        get() { return window.location; },
-        set(url) { window.location.assign(proxify(url)); }
-      });
-    } catch(e) {}
+        const targetOrigin = new URL(targetUrl).origin;
 
-  })();
-  </script>
-  `);
+        const headers = { ...req.headers };
+        delete headers.host;
+        headers.origin = targetOrigin;
+        delete headers['sec-fetch-site'];
+        delete headers['sec-fetch-mode'];
+        delete headers['sec-fetch-dest'];
+        headers['user-agent'] = headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...';
+        headers['referer'] = req.query.url || '';
+        if (req.headers.cookie) {
+        headers.cookie = req.headers.cookie;
+        }
+        let fetchOptions = { method, headers, redirect: "manual" };
+        if (fetchOptions.headers["accept-encoding"]) {
+            fetchOptions.headers["accept-encoding"] =
+                fetchOptions.headers["accept-encoding"].replace(/\b(br|zstd)\b/g, "");
+        }
+        if (method !== "GET" && method !== "HEAD") {
+            fetchOptions.body = req.bodyRaw || req;
+        }
+        const jar = getSessionJar(req);
+        const cookieFetch = fetchCookie(fetch, jar);
+        const response = await cookieFetch(targetUrl, fetchOptions);
 
-  res.send($.html());
-} else if (contentType.includes("text/css")) {
-      let body = await response.text();
-      body = body.replace(/url\((.*?)\)/g, (_, url) => {
-        let clean = url.replace(/['"]/g, "").trim();
-        if (clean.startsWith("data:")) return `url(${url})`;
-        return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
-      });
-      res.send(body);
-    } else if (contentType.includes("text/")) {
-      const body = await response.text();
-      res.send(body);
-    } else {
-      // Binary (images, PDFs, etc.)
-      const buffer = await response.arrayBuffer();
-      res.send(Buffer.from(buffer));
-    }
-  } catch (err) {
-    console.error("Error fetching " + targetUrl + ": " + err)
+        const cookies = await jar.getCookies(targetUrl);
+        if (cookies.length) {
+            res.setHeader(
+                "Set-Cookie",
+                cookies.map(c => c.cookieString({ includeHttpOnly: true }))
+            );
+        }
+        if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (location) {
+            const resolved = new URL(location, targetUrl).href;
+            res.send(`
+            <!DOCTYPE html>
+            <html><head><meta charset="utf-8"></head>
+            <body>
+                <script>
+                if (window.top && window.top.loadPage) {
+                    window.top.loadPage(${JSON.stringify(resolved)});
+                } else {
+                    document.write("Redirect failed: parent loader not found");
+                }
+                </script>
+            </body></html>
+            `);
+            return;
+        }
+        }
+
+        let contentType = response.headers.get("content-type") || "";
+        res.set("content-type", contentType);
+        if (contentType.includes("text/html")) {
+        let body = await response.text();
+        const $ = cheerio.load(body);
+        const pageOrigin = new URL(targetUrl).origin;
+        const baseTag = `<base href="${pageOrigin}/">`;
+        $("head").prepend(baseTag + "\n");
+        const attrMap = {
+            a: "href",
+            link: "href",
+            img: "src",
+            script: "src",
+            iframe: "src",
+            frame: "src",
+            embed: "src",
+            object: "data",
+            source: "src",
+            track: "src",
+            audio: "src",
+            video: "src",
+            form: "action",
+            area: "href",
+        };
+
+        for (const [tag, attr] of Object.entries(attrMap)) {
+            $(tag).each((_, el) => {
+            let val = $(el).attr(attr);
+            if (val && !val.startsWith("data:") && !val.startsWith("javascript:")) {
+                $(el).attr(attr, rewriteUrl(serverUrl, new URL(val, targetUrl).href));
+            }
+            });
+        }
+
+        $("img, source").each((_, el) => {
+            let srcset = $(el).attr("srcset");
+            if (srcset) {
+            let rewritten = srcset
+                .split(",")
+                .map(entry => {
+                let [url, size] = entry.trim().split(/\s+/, 2);
+                return rewriteUrl(serverUrl, url) + (size ? " " + size : "");
+                })
+                .join(", ");
+            $(el).attr("srcset", rewritten);
+            }
+        });
+
+    $("body").append(`
+    <script>
+    (function() {
+        const server = new URL(${JSON.stringify(serverUrl)});
+        const pageBase = new URL(${JSON.stringify(targetUrl)});
+
+        function deproxify(u) {
+        try {
+            const abs = new URL(u, pageBase);
+            if (abs.origin === server.origin && abs.pathname === server.pathname) {
+            const inner = abs.searchParams.get("url");
+            return inner || abs.href;
+            }
+            return abs.href;
+        } catch(e) { return u; }
+        }
+
+        // Wrap URL for proxying
+        function proxify(u) {
+        const resolved = new URL(deproxify(u), pageBase).href;
+        const p = new URL(server.href);
+        p.searchParams.set("url", resolved);
+        return p.href;
+        }
+
+        // Patch fetch
+        const origFetch = window.fetch;
+        window.fetch = function(input, init) {
+        if (typeof input === "string") input = proxify(input);
+        else if (input instanceof Request) {
+            const newReq = new Request(proxify(input.url), {
+            method: input.method,
+            headers: input.headers,
+            body: input.body,
+            mode: input.mode,
+            credentials: input.credentials,
+            cache: input.cache,
+            redirect: input.redirect,
+            referrer: input.referrer,
+            integrity: input.integrity,
+            });
+            input = newReq;
+        }
+        return origFetch(input, init);
+        };
+
+        // Patch XMLHttpRequest
+        const origOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+        arguments[1] = proxify(url);
+        return origOpen.apply(this, arguments);
+        };
+
+        // Patch WebSocket
+        const OrigWebSocket = window.WebSocket;
+        window.WebSocket = function(url, protocols) {
+        return new OrigWebSocket(proxify(url), protocols);
+        };
+        window.WebSocket.prototype = OrigWebSocket.prototype;
+
+        // Safe location overrides
+        try {
+        Object.defineProperty(top, "location", {
+            configurable: true,
+            enumerable: true,
+            get() { return top.location; },
+            set(url) { top.location.href = proxify(url); }
+        });
+        } catch(e) {}
+
+        try {
+        Object.defineProperty(window, "location", {
+            configurable: true,
+            enumerable: true,
+            get() { return window.location; },
+            set(url) { window.location.assign(proxify(url)); }
+        });
+        } catch(e) {}
+
+    })();
+    </script>
+    `);
+
+    res.send($.html());
+    } else if (contentType.includes("text/css")) {
+        let body = await response.text();
+        body = body.replace(/url\((.*?)\)/g, (_, url) => {
+            let clean = url.replace(/['"]/g, "").trim();
+            if (clean.startsWith("data:")) return `url(${url})`;
+            return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
+        });
+        res.send(body);
+        } else if (contentType.includes("text/")) {
+        const body = await response.text();
+        res.send(body);
+        } else {
+        // Binary (images, PDFs, etc.)
+        const buffer = await response.arrayBuffer();
+        res.send(Buffer.from(buffer));
+        }
+    } catch (err) {
+        console.error("Error fetching " + targetUrl + ": " + err)
 
     let failFetchErrorHtml = `
       <!DOCTYPE html>
@@ -397,4 +415,4 @@ app.use((req, res, next) => {
 app.get("/proxy", (req, res) => handleProxy(req, res, "GET"));
 app.post("/proxy", (req, res) => handleProxy(req, res, "POST"));
 
-app.listen(3000, () => console.log("Proxy running on https://allucat1000-huopaproxy-29.deno.dev/proxy"));
+app.listen(3000, () => console.log("Proxy running on " + serverUrl));
