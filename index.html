@@ -124,9 +124,13 @@
         });
 
         // Forms
-        doc.querySelectorAll("form").forEach(form => {
-            form.addEventListener("submit", e => {
+        doc.addEventListener("submit", e => {
+            const form = e.target.closest("form");
+            if (!form) return;
+
+            console.log("submit form!");
             e.preventDefault();
+
             const rawAction = form.getAttribute("action") || "";
             const action = deproxify(rawAction || remoteUrl, remoteUrl);
             const fd = new FormData(form);
@@ -134,10 +138,10 @@
 
             if ((form.method || "get").toLowerCase() === "post") {
                 fetch(server.href + "?url=" + encodeURIComponent(action), {
-                method: "POST",
-                body: params,
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                credentials: "include"
+                    method: "POST",
+                    body: params,
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    credentials: "include"
                 })
                 .then(r => r.text())
                 .then(html => renderIntoIframe(html, action));
@@ -145,8 +149,7 @@
                 const urlWithQs = action + (action.includes("?") ? "&" : "?") + params.toString();
                 loadPage(urlWithQs);
             }
-            });
-        });
+        }, true);
 
         // Meta refresh
         doc.querySelectorAll('meta[http-equiv="refresh"]').forEach(meta => {
@@ -159,6 +162,13 @@
             setTimeout(() => loadPage(next), delay);
             }
         });
+
+        const noop = () => {};
+
+        win.history.pushState = () => {}
+        win.history.replaceState = () => {}
+
+        win.addEventListener("popstate", e => {} );
     }
 
     async function loadPage(rawRemoteUrl, search = false) {
