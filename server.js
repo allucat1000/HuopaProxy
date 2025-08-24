@@ -106,6 +106,7 @@ function rewriteUrl(baseServerUrl, targetUrl) {
 }
 
 async function handleProxy(req, res, method) {
+  const clientVersion = req.headers["x-client-version"] || "full";
   const targetUrl = req.query.url;
 
   let missingUrlHtml = `
@@ -184,21 +185,35 @@ async function handleProxy(req, res, method) {
         if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location");
         if (location) {
-            const resolved = new URL(location, targetUrl).href;
-            res.send(`
-            <!DOCTYPE html>
-            <html><head><meta charset="utf-8"></head>
-            <body>
-                <script>
-                if (window.top && window.top.loadPage) {
-                    window.top.loadPage(${JSON.stringify(resolved)});
-                } else {
-                    document.write("Redirect failed: parent loader not found");
-                }
-                </script>
-            </body></html>
-            `);
-            return;
+            if (clientVersion === "min") {
+                const resolved = new URL(location, targetUrl).href;
+                res.send(`
+                <!DOCTYPE html>
+                <html><head><meta charset="utf-8">
+                <meta http-equiv="refresh" content="0; url=${resolved}">
+                </head>
+                <body>
+                    Redirecting to <a href="${resolved}">${resolved}</a>
+                </body></html>
+                `);
+                return;
+            } else {
+                const resolved = new URL(location, targetUrl).href;
+                res.send(`
+                <!DOCTYPE html>
+                <html><head><meta charset="utf-8"></head>
+                <body>
+                    <script>
+                    if (window.top && window.top.loadPage) {
+                        window.top.loadPage(${JSON.stringify(resolved)});
+                    } else {
+                        document.write("Redirect failed: parent loader not found");
+                    }
+                    </script>
+                </body></html>
+                `);
+                return;
+            }
         }
         }
 
@@ -249,89 +264,162 @@ async function handleProxy(req, res, method) {
             $(el).attr("srcset", rewritten);
             }
         });
+        if (clientVersion == "min") {
+            $("body").append(`
+                <script>
+                (function() {
+                    const server = new URL(${JSON.stringify(serverUrl)});
+                    const pageBase = new URL(${JSON.stringify(targetUrl)});
 
-    $("body").append(`
-    <script>
-    (function() {
-        const server = new URL(${JSON.stringify(serverUrl)});
-        const pageBase = new URL(${JSON.stringify(targetUrl)});
+                    function deproxify(u) {
+                        try {
+                            const abs = new URL(u, pageBase);
+                            if (abs.origin === server.origin && abs.pathname === server.pathname) {
+                                const inner = abs.searchParams.get("url");
+                                return inner || abs.href;
+                            }
+                            return abs.href;
+                        } catch(e) { return u; }
+                    }
 
-        function deproxify(u) {
-        try {
-            const abs = new URL(u, pageBase);
-            if (abs.origin === server.origin && abs.pathname === server.pathname) {
-            const inner = abs.searchParams.get("url");
-            return inner || abs.href;
-            }
-            return abs.href;
-        } catch(e) { return u; }
+                    function proxify(u) {
+                        const resolved = new URL(deproxify(u), pageBase).href;
+                        const p = new URL(server.href);
+                        p.searchParams.set("url", resolved);
+                        return p.href;
+                    }
+
+                    // Patch fetch
+                    const origFetch = window.fetch;
+                    window.fetch = function(input, init) {
+                        if (typeof input === "string") input = proxify(input);
+                        else if (input instanceof Request) {
+                            input = new Request(proxify(input.url), {
+                                method: input.method,
+                                headers: input.headers,
+                                body: input.body,
+                                mode: input.mode,
+                                credentials: input.credentials,
+                                cache: input.cache,
+                                redirect: input.redirect,
+                                referrer: input.referrer,
+                                integrity: input.integrity,
+                            });
+                        }
+                        return origFetch(input, init);
+                    };
+
+                    // Patch XMLHttpRequest
+                    const origOpen = XMLHttpRequest.prototype.open;
+                    XMLHttpRequest.prototype.open = function(method, url) {
+                        arguments[1] = proxify(url);
+                        return origOpen.apply(this, arguments);
+                    };
+
+                    // Patch WebSocket
+                    const OrigWebSocket = window.WebSocket;
+                    window.WebSocket = function(url, protocols) {
+                        return new OrigWebSocket(proxify(url), protocols);
+                    };
+                    window.WebSocket.prototype = OrigWebSocket.prototype;
+
+                    // Override location
+                    try {
+                        Object.defineProperty(window, "location", {
+                            configurable: true,
+                            enumerable: true,
+                            get() { return window.location; },
+                            set(url) { window.location.assign(proxify(url)); }
+                        });
+                    } catch(e) {}
+
+                })();
+                </script>
+                `)
+        } else {
+            $("body").append(`
+            <script>
+            (function() {
+                const server = new URL(${JSON.stringify(serverUrl)});
+                const pageBase = new URL(${JSON.stringify(targetUrl)});
+
+                function deproxify(u) {
+                try {
+                    const abs = new URL(u, pageBase);
+                    if (abs.origin === server.origin && abs.pathname === server.pathname) {
+                    const inner = abs.searchParams.get("url");
+                    return inner || abs.href;
+                    }
+                    return abs.href;
+                } catch(e) { return u; }
+                }
+
+                // Wrap URL for proxying
+                function proxify(u) {
+                const resolved = new URL(deproxify(u), pageBase).href;
+                const p = new URL(server.href);
+                p.searchParams.set("url", resolved);
+                return p.href;
+                }
+
+                // Patch fetch
+                const origFetch = window.fetch;
+                window.fetch = function(input, init) {
+                if (typeof input === "string") input = proxify(input);
+                else if (input instanceof Request) {
+                    const newReq = new Request(proxify(input.url), {
+                    method: input.method,
+                    headers: input.headers,
+                    body: input.body,
+                    mode: input.mode,
+                    credentials: input.credentials,
+                    cache: input.cache,
+                    redirect: input.redirect,
+                    referrer: input.referrer,
+                    integrity: input.integrity,
+                    });
+                    input = newReq;
+                }
+                return origFetch(input, init);
+                };
+
+                // Patch XMLHttpRequest
+                const origOpen = XMLHttpRequest.prototype.open;
+                XMLHttpRequest.prototype.open = function(method, url) {
+                arguments[1] = proxify(url);
+                return origOpen.apply(this, arguments);
+                };
+
+                // Patch WebSocket
+                const OrigWebSocket = window.WebSocket;
+                window.WebSocket = function(url, protocols) {
+                return new OrigWebSocket(proxify(url), protocols);
+                };
+                window.WebSocket.prototype = OrigWebSocket.prototype;
+
+                // Safe location overrides
+                try {
+                Object.defineProperty(top, "location", {
+                    configurable: true,
+                    enumerable: true,
+                    get() { return top.location; },
+                    set(url) { top.location.href = proxify(url); }
+                });
+                } catch(e) {}
+
+                try {
+                Object.defineProperty(window, "location", {
+                    configurable: true,
+                    enumerable: true,
+                    get() { return window.location; },
+                    set(url) { window.location.assign(proxify(url)); }
+                });
+                } catch(e) {}
+
+            })();
+            </script>
+            `);
         }
-
-        // Wrap URL for proxying
-        function proxify(u) {
-        const resolved = new URL(deproxify(u), pageBase).href;
-        const p = new URL(server.href);
-        p.searchParams.set("url", resolved);
-        return p.href;
-        }
-
-        // Patch fetch
-        const origFetch = window.fetch;
-        window.fetch = function(input, init) {
-        if (typeof input === "string") input = proxify(input);
-        else if (input instanceof Request) {
-            const newReq = new Request(proxify(input.url), {
-            method: input.method,
-            headers: input.headers,
-            body: input.body,
-            mode: input.mode,
-            credentials: input.credentials,
-            cache: input.cache,
-            redirect: input.redirect,
-            referrer: input.referrer,
-            integrity: input.integrity,
-            });
-            input = newReq;
-        }
-        return origFetch(input, init);
-        };
-
-        // Patch XMLHttpRequest
-        const origOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url) {
-        arguments[1] = proxify(url);
-        return origOpen.apply(this, arguments);
-        };
-
-        // Patch WebSocket
-        const OrigWebSocket = window.WebSocket;
-        window.WebSocket = function(url, protocols) {
-        return new OrigWebSocket(proxify(url), protocols);
-        };
-        window.WebSocket.prototype = OrigWebSocket.prototype;
-
-        // Safe location overrides
-        try {
-        Object.defineProperty(top, "location", {
-            configurable: true,
-            enumerable: true,
-            get() { return top.location; },
-            set(url) { top.location.href = proxify(url); }
-        });
-        } catch(e) {}
-
-        try {
-        Object.defineProperty(window, "location", {
-            configurable: true,
-            enumerable: true,
-            get() { return window.location; },
-            set(url) { window.location.assign(proxify(url)); }
-        });
-        } catch(e) {}
-
-    })();
-    </script>
-    `);
 
     res.send($.html());
     } else if (contentType.includes("text/css")) {
