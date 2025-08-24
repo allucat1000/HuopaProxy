@@ -40,7 +40,7 @@
   <iframe id="page"></iframe>
   <script type="module">
     const searchInput = document.getElementById("searchInput");
-    const targetUrl = "https://startpage.com/"
+    const targetUrl = "https://www.startpage.com/"
     let currentUrl = null;
     const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
     const server = new URL(serverUrl);
@@ -80,12 +80,93 @@
         return abs.href;
         } catch { return u; }
     }
+    function renderIntoIframe(html, remoteUrl) {
+        currentUrl = remoteUrl;
+        searchInput.value = "";
+        searchInput.placeholder = currentUrl;
+
+        // Replace iframe
+        if (document.getElementById("page")) document.getElementById("page").remove();
+        const frame = document.createElement("iframe");
+        frame.id = "page";
+        document.body.append(frame);
+
+        // hotkey inside frame
+        frame.contentWindow.addEventListener("keydown", (e) => {
+            if (e.key.toLowerCase() === "r" && e.ctrlKey) {
+            e.preventDefault();
+            loadPage(currentUrl);
+            }
+        });
+
+        const doc = frame.contentDocument || frame.contentWindow.document;
+        doc.open(); doc.write(html); doc.close();
+        attachIframeHotkey();
+
+        const win = frame.contentWindow;
+
+        // Safe nav patches (don’t redefine location property)
+        win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; };
+        try {
+            win.location.assign = (u) => loadPage(deproxify(u, remoteUrl));
+            win.location.replace = (u) => loadPage(deproxify(u, remoteUrl));
+            win.location.reload  = ()  => loadPage(remoteUrl);
+        } catch {}
+
+        // Links
+        doc.addEventListener("click", e => {
+            const a = e.target.closest("a");
+            if (!a) return;
+            e.preventDefault();
+            const rawHref = a.getAttribute("href") || a.href;
+            const next = deproxify(rawHref, remoteUrl);
+            loadPage(next);
+        });
+
+        // Forms
+        doc.querySelectorAll("form").forEach(form => {
+            form.addEventListener("submit", e => {
+            e.preventDefault();
+            const rawAction = form.getAttribute("action") || "";
+            const action = deproxify(rawAction || remoteUrl, remoteUrl);
+            const fd = new FormData(form);
+            const params = new URLSearchParams(fd);
+
+            if ((form.method || "get").toLowerCase() === "post") {
+                fetch(server.href + "?url=" + encodeURIComponent(action), {
+                method: "POST",
+                body: params,
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                credentials: "include"
+                })
+                .then(r => r.text())
+                .then(html => renderIntoIframe(html, action));
+            } else {
+                const urlWithQs = action + (action.includes("?") ? "&" : "?") + params.toString();
+                loadPage(urlWithQs);
+            }
+            });
+        });
+
+        // Meta refresh
+        doc.querySelectorAll('meta[http-equiv="refresh"]').forEach(meta => {
+            const content = meta.getAttribute("content") || "";
+            const match = content.match(/^\s*(\d+)\s*;\s*url=(.+)$/i);
+            if (match) {
+            const delay = parseInt(match[1], 10) * 1000;
+            const raw = match[2].trim();
+            const next = deproxify(raw, remoteUrl);
+            setTimeout(() => loadPage(next), delay);
+            }
+        });
+    }
 
     async function loadPage(rawRemoteUrl, search = false) {
         let remoteUrl = rawRemoteUrl;
-        if (search) {
+
+        if (true) {
             if (remoteUrl.includes(" ") || !remoteUrl.includes(".")) {
-                remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
+            remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
             }
         }
         if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
@@ -95,79 +176,12 @@
             if (document.getElementById("page")) document.getElementById("page").remove();
             return;
         }
-        currentUrl = remoteUrl;
-        searchInput.value = "";
-        searchInput.placeholder = currentUrl;
-        const raw = await fetch(server.href + "?url=" + encodeURIComponent(remoteUrl), { credentials: 'include' });
 
-        const data = await raw.text();
-        if (document.getElementById("page")) document.getElementById("page").remove();
-        const frame = document.createElement("iframe");
-        frame.id = "page";
-        document.body.append(frame);
-        frame.contentWindow.addEventListener("keydown", (e) => {
-            if (e.key.toLowerCase() === "r" && e.ctrlKey) {
-                e.preventDefault();
-                loadPage(currentUrl);
-            }
+        const raw = await fetch(server.href + "?url=" + encodeURIComponent(remoteUrl), {
+            credentials: 'include'
         });
-        const doc = frame.contentDocument || frame.contentWindow.document;
-
-        doc.open(); doc.write(data); doc.close();
-        attachIframeHotkey();
-
-        const win = frame.contentWindow;
-
-        // Safe nav patches (don’t redefine location property)
-        win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; };
-        try {
-        win.location.assign = (u) => loadPage(deproxify(u, remoteUrl));
-        win.location.replace = (u) => loadPage(deproxify(u, remoteUrl));
-        win.location.reload  = ()  => loadPage(remoteUrl);
-        } catch {}
-
-        // Links
-        doc.addEventListener("click", e => {
-        const a = e.target.closest("a");
-        if (!a) return;
-        e.preventDefault();
-        const rawHref = a.getAttribute("href") || a.href; // prefer raw attribute
-        const next = deproxify(rawHref, remoteUrl);
-        loadPage(next);
-        });
-
-        // Forms
-        doc.querySelectorAll("form").forEach(form => {
-        form.addEventListener("submit", e => {
-            e.preventDefault();
-            const rawAction = form.getAttribute("action") || "";
-            const action = deproxify(rawAction || remoteUrl, remoteUrl);
-
-            const fd = new FormData(form);
-            const params = new URLSearchParams(fd);
-            if ((form.method || "get").toLowerCase() === "post") {
-            fetch(server.href + "?url=" + encodeURIComponent(action), {
-                method: "POST",
-                body: params
-            }).then(r => r.text()).then(html => loadPage(action, html));
-            } else {
-            const urlWithQs = action + (action.includes("?") ? "&" : "?") + params.toString();
-            loadPage(urlWithQs);
-            }
-        });
-        });
-
-        // Meta refresh
-        doc.querySelectorAll('meta[http-equiv="refresh"]').forEach(meta => {
-        const content = meta.getAttribute("content") || "";
-        const match = content.match(/^\s*(\d+)\s*;\s*url=(.+)$/i);
-        if (match) {
-            const delay = parseInt(match[1], 10) * 1000;
-            const raw = match[2].trim();
-            const next = deproxify(raw, remoteUrl);
-            setTimeout(() => loadPage(next), delay);
-        }
-        });
+        const html = await raw.text();
+        renderIntoIframe(html, remoteUrl);
     }
 
     window.loadPage = loadPage;
