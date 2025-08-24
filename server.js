@@ -75,7 +75,7 @@ app.use((req, res, next) => {
   }
 
   res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.header("Access-Control-Allow-Headers", "Content-Type, X-Client-Version");
   res.header("Access-Control-Allow-Credentials", "true");
 
   if (req.method === "OPTIONS") return res.sendStatus(200);
@@ -171,6 +171,7 @@ async function handleProxy(req, res, method) {
         if (method !== "GET" && method !== "HEAD") {
             fetchOptions.body = req.bodyRaw || req;
         }
+        console.log(`[${method}] ${req.ip} ${targetUrl}`)
         const jar = getSessionJar(req);
         const cookieFetch = fetchCookie(fetch, jar);
         const response = await cookieFetch(targetUrl, fetchOptions);
@@ -187,15 +188,8 @@ async function handleProxy(req, res, method) {
         if (location) {
             if (clientVersion === "min") {
                 const resolved = new URL(location, targetUrl).href;
-                res.send(`
-                <!DOCTYPE html>
-                <html><head><meta charset="utf-8">
-                <meta http-equiv="refresh" content="0; url=${resolved}">
-                </head>
-                <body>
-                    Redirecting to <a href="${resolved}">${resolved}</a>
-                </body></html>
-                `);
+
+                res.json({ redirect: resolved });
                 return;
             } else {
                 const resolved = new URL(location, targetUrl).href;
@@ -270,6 +264,7 @@ async function handleProxy(req, res, method) {
                 (function() {
                     const server = new URL(${JSON.stringify(serverUrl)});
                     const pageBase = new URL(${JSON.stringify(targetUrl)});
+                    const clV = ${JSON.stringify(clientVersion)};
 
                     function deproxify(u) {
                         try {
@@ -293,10 +288,12 @@ async function handleProxy(req, res, method) {
                     const origFetch = window.fetch;
                     window.fetch = function(input, init) {
                         if (typeof input === "string") input = proxify(input);
+                        let headers = input.headers
+                        if (clV === "min") headers["X-Client-Version"] = "min";
                         else if (input instanceof Request) {
                             input = new Request(proxify(input.url), {
                                 method: input.method,
-                                headers: input.headers,
+                                headers: headers,
                                 body: input.body,
                                 mode: input.mode,
                                 credentials: input.credentials,
