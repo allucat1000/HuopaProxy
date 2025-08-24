@@ -56,8 +56,8 @@ let internalErrorHtml = `
 
 
 const limiter = rateLimit({
-	windowMs: 5 * 60 * 1000, // 10m
-	limit: 200,
+	windowMs: 5 * 60 * 500, // 5m
+	limit: 300,
 	standardHeaders: 'draft-8',
 	legacyHeaders: false,
 	ipv6Subnet: 64,
