@@ -6,8 +6,8 @@ import { CookieJar } from "npm:tough-cookie";
 import fetchCookie from "npm:fetch-cookie";
 import fs from "node:fs";
 
-const blockedIps = Deno.env.get("blockedIps").split(",");
-const noRatelimitIps = Deno.env.get("noRatelimitIps").split(",");
+const blockedIps = (Deno.env.get("blockedIps") || "").split(",");
+const noRatelimitIps = (Deno.env.get("noRatelimitIps") || "").split(",");
 
 const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
 const app = express();
