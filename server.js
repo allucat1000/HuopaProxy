@@ -6,6 +6,8 @@ import { CookieJar } from "npm:tough-cookie";
 import fetchCookie from "npm:fetch-cookie";
 import fs from "node:fs";
 
+const blockedIps = Deno.env.get("blockedIps").split(",");
+const noRatelimitIps = Deno.env.get("noRatelimitIps").split(",");
 
 const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
 const app = express();
@@ -88,7 +90,8 @@ let internalErrorHtml = `
 
 
 const limiter = rateLimit({
-	windowMs: 5 * 60 * 100, // 5m
+    skip: (req, res) => noRatelimitIps.includes(req.ip),
+	windowMs: 5 * 60 * 100,
 	limit: 100,
 	standardHeaders: 'draft-8',
 	legacyHeaders: false,
@@ -138,6 +141,7 @@ function rewriteUrl(baseServerUrl, targetUrl) {
 }
 
 async function handleProxy(req, res, method) {
+  if (blockedIps.includes(req.ip)) return res.status(403).send("Your IP address has been blocked.");
   const clientVersion = req.headers["x-client-version"] || "full";
   const targetUrl = req.query.url;
 
