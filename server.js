@@ -4,17 +4,49 @@ import { Buffer } from "node:buffer";
 import { rateLimit } from 'npm:express-rate-limit'
 import { CookieJar } from "npm:tough-cookie";
 import fetchCookie from "npm:fetch-cookie";
+import fs from "node:fs";
+
 
 const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
 const app = express();
 
 const sessions = new Map();
 
-function getSessionJar(req) {
-  const sid = req.headers["x-session-id"] || req.ip;
-  if (!sessions.has(sid)) sessions.set(sid, new CookieJar());
-  return sessions.get(sid);
+const SESSION_FILE = "sessions.json";
+
+loadSessions();
+
+function saveSessions() {
+    const obj = {};
+    for (const [sid, jar] of sessions.entries()) {
+        obj[sid] = jar.toJSON();
+    }
+    fs.writeFileSync(SESSION_FILE, JSON.stringify(obj));
 }
+
+function loadSessions() {
+    if (!fs.existsSync(SESSION_FILE)) return;
+    const raw = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8"));
+    for (const sid in raw) {
+        sessions.set(sid, CookieJar.fromJSON(raw[sid]));
+    }
+}
+
+function getOrCreateSession(req) {
+    // Check if cookie exists already
+    let ip = req.ip;
+
+    if (!sessions.has(ip)) {
+        sessions.set(ip, new CookieJar());
+    }
+    return sessions.get(ip);
+}
+
+process.on("SIGINT", () => {
+  console.log("\n[Saving sessions]");
+  saveSessions();
+  process.exit();
+});
 
 let internalErrorHtml = `
   <!DOCTYPE html>
@@ -56,8 +88,8 @@ let internalErrorHtml = `
 
 
 const limiter = rateLimit({
-	windowMs: 5 * 60 * 500, // 5m
-	limit: 300,
+	windowMs: 5 * 60 * 100, // 5m
+	limit: 100,
 	standardHeaders: 'draft-8',
 	legacyHeaders: false,
 	ipv6Subnet: 64,
@@ -150,6 +182,7 @@ async function handleProxy(req, res, method) {
     if (!targetUrl) return res.status(400).send(missingUrlHtml);
 
     try {
+        if (targetUrl.startsWith("file://")) return res.status(404).send("Unable to access local file!");
         const targetOrigin = new URL(targetUrl).origin;
 
         const headers = { ...req.headers };
@@ -172,7 +205,7 @@ async function handleProxy(req, res, method) {
             fetchOptions.body = req.bodyRaw || req;
         }
         console.log(`[${method}] ${req.ip} ${targetUrl}`)
-        const jar = getSessionJar(req);
+        const jar = getOrCreateSession(req);
         const cookieFetch = fetchCookie(fetch, jar);
         const response = await cookieFetch(targetUrl, fetchOptions);
 
@@ -501,3 +534,5 @@ app.get("/proxy", (req, res) => handleProxy(req, res, "GET"));
 app.post("/proxy", (req, res) => handleProxy(req, res, "POST"));
 
 app.listen(3000, () => console.log("Proxy running on " + serverUrl));
+
+setInterval(saveSessions, 30000);
