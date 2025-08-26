@@ -4,8 +4,7 @@ import { Buffer } from "node:buffer";
 import { rateLimit } from 'npm:express-rate-limit'
 import { CookieJar } from "npm:tough-cookie";
 import fetchCookie from "npm:fetch-cookie";
-import fs from "node:fs";
-import path from "node:path";
+
 
 const blockedIps = (Deno.env.get("blockedIps") || "").split(",");
 const noRatelimitIps = (Deno.env.get("noRatelimitIps") || "").split(",");
@@ -15,28 +14,19 @@ const app = express();
 
 const sessions = new Map();
 
-const SESSION_FILE = "./data/sessions.json";
+const kv = await Deno.openKv();
 
+await loadSessions();
 
-loadSessions();
-
-function saveSessions() {
-    const obj = {};
+async function saveSessions() {
     for (const [sid, jar] of sessions.entries()) {
-        obj[sid] = jar.toJSON();
+        await kv.set(["cookies", sid], jar.toJSON());
     }
-    const dir = path.dirname(SESSION_FILE);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(SESSION_FILE, JSON.stringify(obj));
 }
 
-function loadSessions() {
-    if (!fs.existsSync(SESSION_FILE)) return;
-    const raw = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8"));
-    for (const sid in raw) {
-        sessions.set(sid, CookieJar.fromJSON(raw[sid]));
+async function loadSessions() {
+    for await (const entry of kv.list({ prefix: ["cookies"] })) {
+        sessions.set(entry.key[1], CookieJar.fromJSON(entry.value));
     }
 }
 
