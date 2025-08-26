@@ -14,7 +14,8 @@ const app = express();
 
 const sessions = new Map();
 
-const SESSION_FILE = "sessions.json";
+const SESSION_FILE = "./data/sessions.json";
+
 
 loadSessions();
 
@@ -22,6 +23,10 @@ function saveSessions() {
     const obj = {};
     for (const [sid, jar] of sessions.entries()) {
         obj[sid] = jar.toJSON();
+    }
+    const dir = path.dirname(SESSION_FILE);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(SESSION_FILE, JSON.stringify(obj));
 }
