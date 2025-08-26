@@ -5,7 +5,7 @@ import { rateLimit } from 'npm:express-rate-limit'
 import { CookieJar } from "npm:tough-cookie";
 import fetchCookie from "npm:fetch-cookie";
 
-
+const disabled = Deno.env.get("disabled") || false;
 const blockedIps = (Deno.env.get("blockedIps") || "").split(",");
 const noRatelimitIps = (Deno.env.get("noRatelimitIps") || "").split(",");
 
@@ -137,6 +137,7 @@ function rewriteUrl(baseServerUrl, targetUrl) {
 }
 
 async function handleProxy(req, res, method) {
+  if (disabled) return res.status(403).send("The server is manually disabled.");
   if (blockedIps.includes(req.ip)) return res.status(403).send("Your IP address has been blocked.");
   const clientVersion = req.headers["x-client-version"] || "full";
   const targetUrl = req.query.url;
