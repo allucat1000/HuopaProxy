@@ -5,6 +5,7 @@ import { rateLimit } from 'npm:express-rate-limit'
 import { CookieJar } from "npm:tough-cookie";
 import fetchCookie from "npm:fetch-cookie";
 import fs from "node:fs";
+import path from "node:path";
 
 const blockedIps = (Deno.env.get("blockedIps") || "").split(",");
 const noRatelimitIps = (Deno.env.get("noRatelimitIps") || "").split(",");
