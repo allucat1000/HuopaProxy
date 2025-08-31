@@ -47,41 +47,51 @@ process.on("SIGINT", () => {
 });
 
 let internalErrorHtml = `
-  <!DOCTYPE html>
-  <html lang="en">
-  <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Internal Server Error!</title>
-      <style type="text/css">
-          body{
-              font-family: sans-serif;
-              text-align: center;
-              overflow-wrap: anywhere;
-          }
-          h1{
-              margin: 1em;
-              margin-top: 0.5em;
-              font-size: 2.5em;
-          }
-          h2{
-              max-width: 95%;
-              margin: 1em auto;
-          }
-          h3{
-              margin: 1em;
-              font-size: 1.5em;
-              background-color: rgba(0, 0, 0, 0.1);
-              padding: 1em;
-              border-radius: 1em;
-          }
-      </style>
-  </head>
-  <body>
-      <h3>Huopa Web Proxy</h3>
-      <h1>Internal Server Error!1!!</h1>
-  </body>
-  </html>
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&amp;display=swap" rel="stylesheet">
+        <style type="text/css">
+            body, html {
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                text-align: left;
+                overflow-wrap: anywhere;
+                background-color: rgba(30, 30, 30);
+                color: rgba(220, 220, 220);
+                margin: 0;
+                padding: 0;
+            }
+            h1 {
+                margin: 1em;
+            }
+            h2{
+                margin: 1em;
+            }
+            h3 {
+                margin: 1em 1.66em;
+                padding-bottom: 1em;
+            }
+            a {
+                text-decoration: none;
+                color: black;
+                padding: 0.75em 1.5em;
+                border-radius: 1.33em;
+                border-style: none;
+                background-color: #42c3ed;
+                cursor: pointer;
+                margin: 2.25em;
+            }
+        </style>
+    </head>
+    <body>  
+        <h1>Internal Server Error!</h1>
+        <h3>The proxy server has errored.</h3>
+    </body>
+</html>
 `;
 
 
@@ -143,42 +153,50 @@ async function handleProxy(req, res, method) {
   const targetUrl = req.query.url;
 
   let missingUrlHtml = `
-  <!DOCTYPE html>
-  <html lang="en">
-  <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Missing Url!</title>
-      <style type="text/css">
-          body{
-              font-family: sans-serif;
-              text-align: center;
-              overflow-wrap: anywhere;
-          }
-          h1{
-              margin: 1em;
-              margin-top: 0.5em;
-              font-size: 2.5em;
-          }
-          h2{
-              max-width: 95%;
-              margin: 1em auto;
-          }
-          h3{
-              margin: 1em;
-              font-size: 1.5em;
-              background-color: rgba(0, 0, 0, 0.1);
-              padding: 1em;
-              border-radius: 1em;
-          }
-      </style>
-  </head>
-  <body>
-      <h3>Huopa Web Proxy</h3>
-      <h1>Missing base url parameter in request!</h1>
-      <h2>Request parameters: ${escapeHtml(JSON.stringify(req.query)) || "Unknown"}</h2>
-  </body>
-  </html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&amp;display=swap" rel="stylesheet">
+        <style type="text/css">
+            body, html {
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                text-align: left;
+                overflow-wrap: anywhere;
+                background-color: rgba(30, 30, 30);
+                color: rgba(220, 220, 220);
+                margin: 0;
+                padding: 0;
+            }
+            h1 {
+                margin: 1em;
+            }
+            h2{
+                margin: 1em 1.33em;
+            }
+            h3 {
+                margin: 1em 1.66em;
+                padding-bottom: 1em;
+            }
+            a {
+                text-decoration: none;
+                color: black;
+                padding: 0.75em 1.5em;
+                border-radius: 1.33em;
+                border-style: none;
+                background-color: #42c3ed;
+                cursor: pointer;
+                margin: 2.25em;
+            }
+        </style>
+    </head>
+    <body>  
+        <h1>Missing base url parameter in request!</h1>
+        <h2>Request parameters: ${escapeHtml(JSON.stringify(req.query)) || "Unknown"}</h2>
+    </body>
+</html>
   `
     if (!targetUrl) return res.status(400).send(missingUrlHtml);
 
@@ -515,41 +533,51 @@ async function handleProxy(req, res, method) {
     console.error("Error fetching " + targetUrl + ": " + err)
 
     let failFetchErrorHtml = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Url fetch fail!</title>
-          <style type="text/css">
-              body{
-                  font-family: sans-serif;
-                  text-align: center;
-                  overflow-wrap: anywhere;
-              }
-              h1{
-                  margin: 1em;
-                  margin-top: 0.5em;
-                  font-size: 2.5em;
-              }
-              h2{
-                  max-width: 95%;
-                  margin: 1em auto;
-              }
-              h3{
-                  margin: 1em;
-                  font-size: 1.5em;
-                  background-color: rgba(0, 0, 0, 0.1);
-                  padding: 1em;
-                  border-radius: 1em;
-              }
-          </style>
-      </head>
-      <body>
-          <h3>Huopa Web Proxy</h3>
-          <h1>Failed to fetch url: ${escapeHtml(JSON.stringify(targetUrl))}</h1>
-      </body>
-      </html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&amp;display=swap" rel="stylesheet">
+        <style type="text/css">
+            body, html {
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                text-align: left;
+                overflow-wrap: anywhere;
+                background-color: rgba(30, 30, 30);
+                color: rgba(220, 220, 220);
+                margin: 0;
+                padding: 0;
+            }
+            h1 {
+                margin: 1em;
+            }
+            h2{
+                margin: 1em;
+            }
+            h3 {
+                margin: 1em 1.66em;
+                padding-bottom: 1em;
+            }
+            a {
+                text-decoration: none;
+                color: black;
+                padding: 0.75em 1.5em;
+                border-radius: 1.33em;
+                border-style: none;
+                background-color: #42c3ed;
+                cursor: pointer;
+                margin: 2.25em;
+            }
+        </style>
+    </head>
+    <body>  
+        <h1>Unable to load the requested site!</h1>
+        <h3>The proxy encountered an error fetching the requested URL.</h3>
+        <a href=${JSON.stringify(targetUrl)}>Reload</a>
+    </body>
+</html>
     `;
     res.status(500).send(failFetchErrorHtml);
   }
