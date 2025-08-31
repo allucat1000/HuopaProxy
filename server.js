@@ -227,13 +227,7 @@ async function handleProxy(req, res, method) {
                 .filter(enc => !['br', 'zstd'].includes(enc.toLowerCase()))
                 .join(', ');
         }
-
-        const isCorsRequest = req.headers.origin && req.headers['sec-fetch-mode'] === 'cors';
-        if (isCorsRequest) {
-            headers.origin = targetOrigin;
-        } else {
-            delete headers.origin;
-        }
+        headers.origin = targetOrigin;
 
         const fetchOptions = { method, headers, redirect: 'manual' };
         if (method !== 'GET' && method !== 'HEAD') {
