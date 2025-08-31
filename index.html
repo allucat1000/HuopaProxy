@@ -38,6 +38,10 @@
         top: 0.5em;
         transform: translateX(-50%);
         color: white;
+        transition: background-color 0.1s;
+    }
+    input:hover {
+        background-color: rgb(50, 50, 50);
     }
 </style>
 </head>
@@ -88,8 +92,7 @@
     }
     function renderIntoIframe(html, remoteUrl) {
         currentUrl = remoteUrl;
-        searchInput.value = "";
-        searchInput.placeholder = currentUrl;
+        searchInput.value = currentUrl;
 
         // Replace iframe
         if (document.getElementById("page")) document.getElementById("page").remove();
