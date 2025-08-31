@@ -55,8 +55,16 @@
 <input id="searchInput">
 <iframe id="page"></iframe>
 <script type="module">
+    const url = new URL(window.location.href);
+    const kiosk = url.searchParams.get("kiosk");
     const searchInput = document.getElementById("searchInput");
-    const targetUrl = "https://www.startpage.com/"
+    let targetUrl = "https://www.startpage.com/";
+    if (kiosk) {
+        targetUrl = kiosk;
+        searchInput.remove();
+        document.getElementById("page").style.height = "100%";
+        document.getElementById("page").style.top = "0";
+    }
     let currentUrl = null;
     const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
     const server = new URL(serverUrl);
@@ -79,13 +87,14 @@
         w.addEventListener('keydown', reloadHotkey, { capture: true });
         } catch {}
     }
-
-    searchInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            if (searchInput.value) loadPage(searchInput.value, true);
-        }
-    })
+    if (!kiosk) {
+        searchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                if (searchInput.value) loadPage(searchInput.value, true);
+            }
+        })
+    }
     function deproxify(u, currentRemoteBase) {
         try {
         const abs = new URL(u, currentRemoteBase);
@@ -98,11 +107,15 @@
     }
     function renderIntoIframe(html, remoteUrl) {
         currentUrl = remoteUrl;
-        searchInput.value = currentUrl;
+        if (!kiosk) searchInput.value = currentUrl;
 
         // Replace iframe
         if (document.getElementById("page")) document.getElementById("page").remove();
         const frame = document.createElement("iframe");
+        if (kiosk) {
+            frame.style.height = "100%";
+            frame.style.top = "0";
+        }
         frame.id = "page";
         document.body.append(frame);
 
