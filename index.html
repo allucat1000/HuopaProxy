@@ -128,7 +128,6 @@
             const form = e.target.closest("form");
             if (!form) return;
 
-            console.log("submit form!");
             e.preventDefault();
 
             const rawAction = form.getAttribute("action") || "";
@@ -167,26 +166,128 @@
 
         win.history.pushState = () => {}
         win.history.replaceState = () => {}
-
         win.addEventListener("popstate", e => {} );
+        injectMutationObserver(win, serverUrl + "?url=" + encodeURIComponent(remoteUrl), serverUrl, targetUrl)
     }
+    function injectMutationObserver(targetWindow, rewriteUrl, serverUrl, targetUrl) {
+        const attrMap = {
+            a: "href",
+            link: "href",
+            img: "src",
+            script: "src",
+            iframe: "src",
+            frame: "src",
+            embed: "src",
+            object: "data",
+            source: "src",
+            track: "src",
+            audio: "src",
+            video: "src",
+            form: "action",
+            area: "href",
+        };
+
+        const script = `
+            (function() {
+                const attrMap = ${JSON.stringify(attrMap)};
+                const serverUrl = "${serverUrl}";
+                const targetUrl = "${targetUrl}";
+
+                function rewriteUrlSafe(url) {
+                    try {
+                        const absoluteUrl = new URL(url, targetUrl).href;
+                        return serverUrl + "?url=" + encodeURIComponent(absoluteUrl);
+                    } catch {
+                        return url;
+                    }
+                }
+
+                function rewriteCss(css) {
+                    if (!css) return css;
+                    return css.replace(/url\(\\s*(['"]?)(.*?)\\1\s*\\)/g, (_, quote, url) => {
+                        let clean = url.trim();
+                        if (clean.startsWith("data:")) return \`url(\${url})\`;
+                        return \`url(\${rewriteUrlSafe(clean)})\`;
+                    });
+                }
+
+                function rewriteElement(el) {
+                    // attributes
+                    for (const [tag, attr] of Object.entries(attrMap)) {
+                        if (el.tagName && el.tagName.toLowerCase() === tag) {
+                            let val = el.getAttribute(attr);
+                            if (val && !val.startsWith("data:") && !val.startsWith("javascript:")) {
+                                el.setAttribute(attr, rewriteUrlSafe(val));
+                            }
+                        }
+                    }
+
+                    // inline styles
+                    if (el.hasAttribute && el.hasAttribute("style")) {
+                        el.setAttribute("style", rewriteCss(el.getAttribute("style")));
+                    }
+
+                    // style tags
+                    if (el.tagName && el.tagName.toLowerCase() === "style") {
+                        el.textContent = rewriteCss(el.textContent);
+                    }
+
+                    // srcsets
+                    if (el.tagName && ["img", "source"].includes(el.tagName.toLowerCase())) {
+                        let srcset = el.getAttribute("srcset");
+                        if (srcset) {
+                            let rewritten = srcset
+                                .split(",")
+                                .map(entry => {
+                                    let [url, size] = entry.trim().split(/\\s+/, 2);
+                                    return rewriteUrlSafe(url) + (size ? " " + size : "");
+                                })
+                                .join(", ");
+                            el.setAttribute("srcset", rewritten);
+                        }
+                    }
+                }
+
+                const observer = new MutationObserver(mutations => {
+                    for (const mutation of mutations) {
+                        mutation.addedNodes.forEach(node => {
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                rewriteElement(node);
+                                node.querySelectorAll && node.querySelectorAll("*").forEach(rewriteElement);
+                            }
+                        });
+                    }
+                });
+
+                observer.observe(document.documentElement, { childList: true, subtree: true });
+
+                document.querySelectorAll("*").forEach(rewriteElement);
+            })();
+        `;
+
+        const scriptEl = targetWindow.document.createElement("script");
+        scriptEl.textContent = script;
+        try {
+            targetWindow.document.body.appendChild(scriptEl);
+        } catch {}
+    }
+
 
     async function loadPage(rawRemoteUrl, search = false) {
         let remoteUrl = rawRemoteUrl;
 
-        if (true) {
+        if (rawRemoteUrl === "about:blank") {
+            if (document.getElementById("page")) document.getElementById("page").remove();
+            return;
+        }
+        if (search) {
             if (remoteUrl.includes(" ") || !remoteUrl.includes(".")) {
-            remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
+                remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
             }
         }
         if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
             remoteUrl = "http://" + remoteUrl;
         }
-        if (remoteUrl === "about:blank") {
-            if (document.getElementById("page")) document.getElementById("page").remove();
-            return;
-        }
-
         const raw = await fetch(server.href + "?url=" + encodeURIComponent(remoteUrl), {
             credentials: 'include'
         });
