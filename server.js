@@ -87,8 +87,8 @@ let internalErrorHtml = `
 
 const limiter = rateLimit({
     skip: (req, res) => noRatelimitIps.includes(req.ip),
-	windowMs: 5 * 60 * 100,
-	limit: 100,
+	windowMs: 8 * 60 * 100,
+	limit: 200,
 	standardHeaders: 'draft-8',
 	legacyHeaders: false,
 	ipv6Subnet: 64,
@@ -184,30 +184,48 @@ async function handleProxy(req, res, method) {
 
     try {
         if (targetUrl.startsWith("file://")) return res.status(404).send("Unable to access local file!");
+
         const targetOrigin = new URL(targetUrl).origin;
 
         const headers = { ...req.headers };
+
+        // Remove headers that cause issues
         delete headers.host;
-        headers.origin = targetOrigin;
         delete headers['sec-fetch-site'];
         delete headers['sec-fetch-mode'];
         delete headers['sec-fetch-dest'];
+
         headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3';
         headers['referer'] = req.query.url || '';
-        if (req.headers.cookie) {
-        headers.cookie = req.headers.cookie;
+        headers['sec-ch-ua-platform'] = 'Windows';
+        headers['sec-ch-ua'] = '"Chromium";v="134", "Not;A=Brand";v="99"'
+
+        if (req.headers.cookie) headers.cookie = req.headers.cookie;
+
+        if (headers['accept-encoding']) {
+            headers['accept-encoding'] = headers['accept-encoding']
+                .split(',')
+                .map(enc => enc.trim())
+                .filter(enc => !['br', 'zstd'].includes(enc.toLowerCase()))
+                .join(', ');
         }
-        let fetchOptions = { method, headers, redirect: "manual" };
-        if (fetchOptions.headers["accept-encoding"]) {
-            fetchOptions.headers["accept-encoding"] =
-                fetchOptions.headers["accept-encoding"].replace(/\b(br|zstd)\b/g, "");
+
+        const isCorsRequest = req.headers.origin && req.headers['sec-fetch-mode'] === 'cors';
+        if (isCorsRequest) {
+            headers.origin = targetOrigin;
+        } else {
+            delete headers.origin;
         }
-        if (method !== "GET" && method !== "HEAD") {
+
+        const fetchOptions = { method, headers, redirect: 'manual' };
+        if (method !== 'GET' && method !== 'HEAD') {
             fetchOptions.body = req.bodyRaw || req;
         }
-        console.log(`[${method}] ${req.ip} ${targetUrl}`)
+
+        console.log(`[${method}] ${req.ip} ${targetUrl}`);
         const jar = getOrCreateSession(req);
         const cookieFetch = fetchCookie(fetch, jar);
+
         const response = await cookieFetch(targetUrl, fetchOptions);
 
         const cookies = await jar.getCookies(targetUrl);
