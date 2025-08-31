@@ -278,6 +278,30 @@ async function handleProxy(req, res, method) {
             }
             });
         }
+        $("style").each((_, el) => {
+            let css = $(el).html();
+            if (css) {
+                css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
+                    let clean = url.trim();
+                    if (clean.startsWith("data:")) return `url(${url})`;
+                    return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
+                });
+                $(el).html(css);
+            }
+        });
+
+        $("[style]").each((_, el) => {
+            let css = $(el).attr("style");
+            if (css) {
+                css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
+                    let clean = url.trim();
+                    if (clean.startsWith("data:")) return `url(${url})`;
+                    return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
+                });
+                $(el).attr("style", css);
+            }
+        });
+
 
         $("img, source").each((_, el) => {
             let srcset = $(el).attr("srcset");
@@ -455,22 +479,22 @@ async function handleProxy(req, res, method) {
     res.send($.html());
     } else if (contentType.includes("text/css")) {
         let body = await response.text();
-        body = body.replace(/url\((.*?)\)/g, (_, url) => {
-            let clean = url.replace(/['"]/g, "").trim();
+        body = body.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
+            let clean = url.trim();
             if (clean.startsWith("data:")) return `url(${url})`;
             return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
         });
         res.send(body);
-        } else if (contentType.includes("text/")) {
+    } else if (contentType.includes("text/")) {
         const body = await response.text();
         res.send(body);
-        } else {
+    } else {
         // Binary (images, PDFs, etc.)
         const buffer = await response.arrayBuffer();
         res.send(Buffer.from(buffer));
-        }
-    } catch (err) {
-        console.error("Error fetching " + targetUrl + ": " + err)
+    }
+} catch (err) {
+    console.error("Error fetching " + targetUrl + ": " + err)
 
     let failFetchErrorHtml = `
       <!DOCTYPE html>
