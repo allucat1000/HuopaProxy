@@ -116,7 +116,26 @@ app.use((req, res, next) => {
   }
 
   res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, X-Client-Version");
+
+  const requestedHeaders = (req.headers['access-control-request-headers'] || "")
+    .split(",")
+    .map(h => h.trim())
+    .filter(h => h.length > 0)
+    .filter(h => ![
+      "host", 
+      "connection", 
+      "content-length", 
+      "cookie", 
+      "cookie2", 
+      "set-cookie", 
+      "set-cookie2", 
+      "upgrade"
+    ].includes(h.toLowerCase()));
+
+  if (requestedHeaders.length) {
+    res.header("Access-Control-Allow-Headers", requestedHeaders.join(", "));
+  }
+
   res.header("Access-Control-Allow-Credentials", "true");
 
   if (req.method === "OPTIONS") return res.sendStatus(200);
@@ -262,8 +281,8 @@ async function handleProxy(req, res, method) {
                 <html><head><meta charset="utf-8"></head>
                 <body>
                     <script>
-                    if (window.top && window.top.loadPage) {
-                        window.top.loadPage(${JSON.stringify(resolved)});
+                    if (window.parent && window.parent.loadPage) {
+                        window.parent.loadPage(${JSON.stringify(resolved)});
                     } else {
                         document.write("Redirect failed: parent loader not found");
                     }
@@ -374,14 +393,13 @@ async function handleProxy(req, res, method) {
 
                     // Patch fetch
                     const origFetch = window.fetch;
-                    window.fetch = function(input, init) {
-                        if (typeof input === "string") input = proxify(input);
-                        let headers = input.headers
-                        if (clV === "min") headers["X-Client-Version"] = "min";
-                        else if (input instanceof Request) {
+                    window.fetch = function(input, init = {}) {
+                        if (typeof input === "string") {
+                            input = proxify(input);
+                        } else if (input instanceof Request) {
                             input = new Request(proxify(input.url), {
                                 method: input.method,
-                                headers: headers,
+                                headers: input.headers,
                                 body: input.body,
                                 mode: input.mode,
                                 credentials: input.credentials,
@@ -391,22 +409,19 @@ async function handleProxy(req, res, method) {
                                 integrity: input.integrity,
                             });
                         }
+
+                        if (!init.headers) init.headers = {};
+                        init.headers["X-Client-Version"] = clV === "min" ? "min" : clV;
+
                         return origFetch(input, init);
                     };
 
                     // Patch XMLHttpRequest
                     const origOpen = XMLHttpRequest.prototype.open;
-                    XMLHttpRequest.prototype.open = function(method, url) {
+                    XMLHttpRequest.prototype.open = function(method, url, ...args) {
                         arguments[1] = proxify(url);
-                        return origOpen.apply(this, arguments);
+                        return origOpen.apply(this, arguments, args);
                     };
-
-                    // Patch WebSocket
-                    const OrigWebSocket = window.WebSocket;
-                    window.WebSocket = function(url, protocols) {
-                        return new OrigWebSocket(proxify(url), protocols);
-                    };
-                    window.WebSocket.prototype = OrigWebSocket.prototype;
 
                     // Override location
                     try {
