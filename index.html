@@ -166,7 +166,7 @@
         if (tab) tab.remove();
         if (tabMark) tabMark.remove();
 
-        const remainingTabs = document.querySelectorAll(".tab");
+        const remainingTabs = document.getElementById("innerTabs").children;
 
         if (remainingTabs.length === 0) {
             selectedTab = null;
@@ -178,7 +178,7 @@
 
         if (id === selectedTab) {
             const firstRemaining = remainingTabs[0];
-            const newId = parseInt(firstRemaining.id.replace("tab", ""));
+            const newId = firstRemaining.id.replace("tab", "");
             openTab(newId);
         }
     }
@@ -216,6 +216,9 @@
     }
 
     async function openTab(id) {
+        const newTab = document.getElementById(Number(id));
+        if (!newTab) throw new Error("Tried to access tab that doesn't exist! Id: " + id);
+
         if (selectedTab !== null && selectedTab !== undefined) {
             const oldTab = document.getElementById(selectedTab);
             const oldTabMark = document.getElementById(`tab${selectedTab}`);
@@ -223,10 +226,7 @@
             if (oldTab) oldTab.style.display = "none";
         }
 
-        const newTab = document.getElementById(id);
-        if (!newTab) throw new Error("Tried to access tab that doesn't exist! Id: " + id);
-
-        selectedTab = id;
+        selectedTab = Number(id);
         const newTabMark = document.getElementById(`tab${selectedTab}`);
         if (newTabMark) newTabMark.classList.add("selectedTab");
         newTab.style.display = "block";
@@ -334,7 +334,6 @@
                 .then(html => renderIntoIframe(html, action));
             } else {
                 const urlWithQs = action + (action.includes("?") ? "&" : "?") + params.toString();
-                console.log(urlWithQs);
                 loadPage(urlWithQs);
             }
         };
