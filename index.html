@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HuopaWebProxy</title>
+<title>Huopa Proxy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&display=swap" rel="stylesheet">
@@ -16,15 +16,17 @@
       background-color: rgba(25, 25, 25);
       color: white;
     }
-    #page {
+
+    .page {
       width: 100%;
-      height: calc(100% - 3.25em);
+      height: calc(100% - 6.75em);
       position: absolute;
-      top: 3.25em;
+      top: 6.75em;
       left: 0;
       border: none;
       background-color: white;
     }
+
     input {
         width: calc(100% - 3em);
         height: 0.7em;
@@ -36,39 +38,116 @@
         border-width: 1px;
         position: absolute;
         left: 50%;
-        top: 0.5em;
+        top: 4.5em;
         transform: translateX(-50%);
         color: white;
         transition: background-color 0.1s;
         outline: none;
     }
+
     input:hover {
         background-color: rgb(50, 50, 50);
     }
+
     input:focus {
         border-color: #42c3ed;
         border-width: 1.5px;
     }
+
+    #newTabButton {
+        margin-left: 1em;
+        background-color: rgb(40, 40, 40);
+        border-style: none;
+        padding: 0.5em;
+        color: white;
+        border-radius: 50%;
+        height: 31px;
+        width: 31px;
+        cursor: pointer;
+        user-select: none;
+        -webkit-user-select: none;
+        -ms-user-select: none;
+    }
+
+    #tabBar {
+        display: flex;
+        align-items: center;
+        height: 60px;
+        overflow-x: auto;
+    }
+
+    .tab {
+        cursor: pointer;
+        padding: 0.75em;
+        margin: 1em;
+        margin-right: 0;
+        background-color: rgb(40, 40, 40);
+        border-radius: 1em;
+        font-size: 0.66em;
+        user-select: none;
+        -webkit-user-select: none;
+        -ms-user-select: none;
+    }
+
+    #tabBar > * {
+        flex-shrink: 0;
+    }
+    .selectedTab {
+        background-color: rgb(55, 55, 55) !important;
+    }
+
+    .closeTab {
+        background-color: rgb(80, 80, 80);
+        border-style: none;
+        color: white;
+        margin-left: 0.5em;
+        border-radius: 50%;
+        width: 18px;
+        height: 18px;
+        font-size: 1em;
+        cursor: pointer;
+    }
+
+    .tabText {
+        padding-left: 0.25em;
+        cursor: pointer;
+    }
+
+    #innerTabs {
+        display: flex;
+    }
 </style>
 </head>
 <body>
+<div id="tabBar">
+    <div id="innerTabs">
+        <div class="tab selectedTab" onclick="openTab(0)" id="tab0">
+            <label class="tabText">Loading...</label>
+            <button onclick="closeTab(0)" class="closeTab">×</button>
+        </div>
+    </div>
+    <button id="newTabButton" onclick="newTab()">+</button>
+</div>
 <input id="searchInput">
-<iframe id="page"></iframe>
 <script type="module">
     const url = new URL(window.location.href);
     const kiosk = url.searchParams.get("kiosk");
+    let selectedTab = 0;
+    let newTabId = 1;
     const searchInput = document.getElementById("searchInput");
     let targetUrl = "https://www.startpage.com/";
     if (kiosk) {
         targetUrl = kiosk;
         searchInput.remove();
-        document.getElementById("page").style.height = "100%";
-        document.getElementById("page").style.top = "0";
+        document.getElementById("tabBar").remove();
+        document.getElementById("0").style.height = "100%";
+        document.getElementById("0").style.top = "0";
     }
     let currentUrl = null;
     const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
     const server = new URL(serverUrl);
     const reloadHotkey = (e) => {
+        if (!selectedTab) return;
         const isReload = (e.key === 'F5') || ((e.ctrlKey || e.metaKey) && e.code === 'KeyR');
         if (!isReload) return;
         e.preventDefault();
@@ -76,15 +155,93 @@
         if (currentUrl) {
             loadPage(currentUrl);
         } else {
-            if (document.getElementById("page")) document.getElementById("page").remove();
+            if (document.getElementById("0")) document.getElementById("0").remove();
         }
     };
     window.addEventListener('keydown', reloadHotkey, { capture: true });
 
+    async function closeTab(id) {
+        const tab = document.getElementById(id);
+        const tabMark = document.getElementById(`tab${id}`);
+        if (tab) tab.remove();
+        if (tabMark) tabMark.remove();
+
+        const remainingTabs = document.querySelectorAll(".tab");
+
+        if (remainingTabs.length === 0) {
+            selectedTab = null;
+            newTabId = 0;
+            searchInput.disabled = true;
+            searchInput.value = "";
+            return;
+        }
+
+        if (id === selectedTab) {
+            const firstRemaining = remainingTabs[0];
+            const newId = parseInt(firstRemaining.id.replace("tab", ""));
+            openTab(newId);
+        }
+    }
+
+    async function newTab() {
+        searchInput.disabled = false;
+
+        const id = newTabId++;
+
+        const createdTab = document.createElement("div");
+        createdTab.classList.add("tab");
+        createdTab.id = `tab${id}`;
+        createdTab.onclick = () => openTab(id);
+
+        const siteName = document.createElement("label");
+        siteName.classList.add("tabText");
+        siteName.textContent = targetUrl;
+
+        const closeTabButton = document.createElement("button");
+        closeTabButton.classList.add("closeTab");
+        closeTabButton.onclick = () => closeTab(id);
+        closeTabButton.textContent = "×";
+
+        createdTab.append(siteName, closeTabButton);
+        document.getElementById("innerTabs").append(createdTab);
+
+        const newFrame = document.createElement("iframe");
+        newFrame.classList.add("page");
+        newFrame.style.display = "none";
+        newFrame.id = id;
+        document.body.append(newFrame);
+
+        openTab(id);
+        loadPage(targetUrl);
+    }
+
+    async function openTab(id) {
+        if (selectedTab !== null && selectedTab !== undefined) {
+            const oldTab = document.getElementById(selectedTab);
+            const oldTabMark = document.getElementById(`tab${selectedTab}`);
+            if (oldTabMark) oldTabMark.classList.remove("selectedTab");
+            if (oldTab) oldTab.style.display = "none";
+        }
+
+        const newTab = document.getElementById(id);
+        if (!newTab) throw new Error("Tried to access tab that doesn't exist! Id: " + id);
+
+        selectedTab = id;
+        const newTabMark = document.getElementById(`tab${selectedTab}`);
+        if (newTabMark) newTabMark.classList.add("selectedTab");
+        newTab.style.display = "block";
+        if (newTabMark) searchInput.value = newTabMark.children[0].textContent;
+    }
+
+
+    window.newTab = newTab
+    window.closeTab = closeTab
+    window.openTab = openTab
+
     function attachIframeHotkey() {
         try {
-        const w = frame.contentWindow;
-        w.addEventListener('keydown', reloadHotkey, { capture: true });
+            const w = frame.contentWindow;
+            w.addEventListener('keydown', reloadHotkey, { capture: true });
         } catch {}
     }
     if (!kiosk) {
@@ -109,21 +266,22 @@
         currentUrl = remoteUrl;
         if (!kiosk) searchInput.value = currentUrl;
 
-        // Replace iframe
-        if (document.getElementById("page")) document.getElementById("page").remove();
+        if (document.getElementById(selectedTab)) document.getElementById(selectedTab).remove();
         const frame = document.createElement("iframe");
         if (kiosk) {
             frame.style.height = "100%";
             frame.style.top = "0";
         }
-        frame.id = "page";
+        frame.id = selectedTab;
+        frame.classList.add("page");
         document.body.append(frame);
+        const tab = document.getElementById(`tab${selectedTab}`);
+        if (tab) tab.children[0].textContent = remoteUrl;
 
-        // hotkey inside frame
         frame.contentWindow.addEventListener("keydown", (e) => {
             if (e.key.toLowerCase() === "r" && e.ctrlKey) {
-            e.preventDefault();
-            loadPage(currentUrl);
+                e.preventDefault();
+                loadPage(currentUrl);
             }
         });
 
@@ -131,10 +289,9 @@
         doc.open(); doc.write(html); doc.close();
         attachIframeHotkey();
 
-
         const win = frame.contentWindow;
 
-        // Safe nav patches (don’t redefine location property)
+        // Safe nav patches
         win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; };
         try {
             win.location.assign = (u) => loadPage(deproxify(u, remoteUrl));
@@ -153,17 +310,19 @@
         });
 
         // Forms
-        doc.addEventListener("submit", e => {
+        win.history.pushState = () => {}
+        win.history.replaceState = () => {}
+
+        const submitHandler = e => {
             const form = e.target.closest("form");
             if (!form) return;
 
             e.preventDefault();
-
+            
             const rawAction = form.getAttribute("action") || "";
             const action = deproxify(rawAction || remoteUrl, remoteUrl);
             const fd = new FormData(form);
             const params = new URLSearchParams(fd);
-
             if ((form.method || "get").toLowerCase() === "post") {
                 fetch(server.href + "?url=" + encodeURIComponent(action), {
                     method: "POST",
@@ -175,9 +334,21 @@
                 .then(html => renderIntoIframe(html, action));
             } else {
                 const urlWithQs = action + (action.includes("?") ? "&" : "?") + params.toString();
+                console.log(urlWithQs);
                 loadPage(urlWithQs);
             }
-        }, true);
+        };
+        doc.addEventListener("submit", submitHandler, true);
+        doc.querySelectorAll("form").forEach(form => {
+            const nativeSubmit = form.submit;
+            form.submit = function() {
+                const ev = new Event("submit", { cancelable: true, bubbles: true });
+                if (form.dispatchEvent(ev)) {
+                    nativeSubmit.apply(form, arguments);
+                }
+            };
+        });
+
 
         // Meta refresh
         doc.querySelectorAll('meta[http-equiv="refresh"]').forEach(meta => {
@@ -193,8 +364,6 @@
 
         const noop = () => {};
 
-        win.history.pushState = () => {}
-        win.history.replaceState = () => {}
         win.addEventListener("popstate", e => {} );
         injectMutationObserver(win, serverUrl + "?url=" + encodeURIComponent(remoteUrl), serverUrl, targetUrl)
     }
@@ -306,7 +475,7 @@
         let remoteUrl = rawRemoteUrl;
 
         if (rawRemoteUrl === "about:blank") {
-            if (document.getElementById("page")) document.getElementById("page").remove();
+            if (document.getElementById(selectedTab)) document.getElementById(selectedTab).remove();
             return;
         }
         if (search) {
