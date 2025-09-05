@@ -419,8 +419,12 @@ async function handleProxy(req, res, method) {
                     // Patch XMLHttpRequest
                     const origOpen = XMLHttpRequest.prototype.open;
                     XMLHttpRequest.prototype.open = function(method, url, ...args) {
-                        arguments[1] = proxify(url);
-                        return origOpen.apply(this, arguments, args);
+                        try {
+                            url = proxify(url);
+                        } catch (e) {
+                            console.warn("XHR proxify failed", e);
+                        }
+                        return origOpen.call(this, method, url, ...args);
                     };
 
                     // Override location
