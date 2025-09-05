@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Huopa Web Proxy</title>
+<title>Huopa Proxy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&display=swap" rel="stylesheet">
@@ -483,13 +483,13 @@
             if (document.getElementById(selectedTab)) document.getElementById(selectedTab).remove();
             return;
         }
-        if (search) {
-            if (!isValidURL(rawRemoteUrl)) {
-                remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
-            }
-        }
         if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
             remoteUrl = "http://" + remoteUrl;
+        }
+        if (search) {
+            if (!isValidURL(remoteUrl)) {
+                remoteUrl = "https://startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
+            }
         }
         const raw = await fetch(server.href + "?url=" + encodeURIComponent(remoteUrl), {
             credentials: 'include'
