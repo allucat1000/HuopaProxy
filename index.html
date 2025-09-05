@@ -500,7 +500,7 @@
     function isValidURL(str) {
         try {
             const data = new URL(str);
-            if (data.protocol == "http:" || data.protocol == "https:" && !data.origin) return true;
+            if (data.protocol.startsWith("http")) return true;
             return false;
         } catch {
             return false;
