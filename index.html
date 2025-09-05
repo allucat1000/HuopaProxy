@@ -494,7 +494,7 @@
             if (document.getElementById(selectedTab)) document.getElementById(selectedTab).remove();
             return;
         }
-        if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://") && !remoteUrl.includes(" ") && !remoteUrl.includes(".")) {
+        if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://") && !remoteUrl.includes(" ") && remoteUrl.includes(".")) {
             remoteUrl = "http://" + remoteUrl;
         }
         if (search) {
