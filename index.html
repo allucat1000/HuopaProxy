@@ -55,7 +55,8 @@
     }
 
     #newTabButton {
-        margin-left: 1em;
+        transition: ease-in 0.1s;
+        margin: 0 1em;
         background-color: rgb(40, 40, 40);
         border-style: none;
         padding: 0.5em;
@@ -290,6 +291,11 @@
         attachIframeHotkey();
 
         const win = frame.contentWindow;
+ 
+        win.eval(`
+        document.requestStorageAccess = async () => Promise.resolve();
+        document.hasStorageAccess = async () => true;
+        `);
 
         // Safe nav patches
         win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; };
@@ -478,7 +484,7 @@
             return;
         }
         if (search) {
-            if (remoteUrl.includes(" ") || !remoteUrl.includes(".")) {
+            if (!isValidURL(rawRemoteUrl)) {
                 remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
             }
         }
@@ -490,6 +496,15 @@
         });
         const html = await raw.text();
         renderIntoIframe(html, remoteUrl);
+    }
+    function isValidURL(str) {
+        try {
+            const data = new URL(str);
+            if (data.protocol == "http:" || data.protocol == "https:" && !data.origin) return true;
+            return false;
+        } catch {
+            return false;
+        }
     }
 
     window.loadPage = loadPage;
