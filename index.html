@@ -291,10 +291,13 @@
         attachIframeHotkey();
 
         const win = frame.contentWindow;
+        win.setTitle = window.setTitle;
  
         win.eval(`
         document.requestStorageAccess = async () => Promise.resolve();
         document.hasStorageAccess = async () => true;
+        const titleEl = document.querySelector("title");
+        if (titleEl) window.setTitle(titleEl.textContent);
         `);
 
         // Safe nav patches
@@ -415,6 +418,10 @@
                 }
 
                 function rewriteElement(el) {
+                    // title changing
+                    if (el.tagName && el.tagName.toLowerCase() === "title") {
+                        window.setTitle(el.textContent);
+                    }
                     // attributes
                     for (const [tag, attr] of Object.entries(attrMap)) {
                         if (el.tagName && el.tagName.toLowerCase() === tag) {
@@ -453,16 +460,20 @@
 
                 const observer = new MutationObserver(mutations => {
                     for (const mutation of mutations) {
-                        mutation.addedNodes.forEach(node => {
-                            if (node.nodeType === Node.ELEMENT_NODE) {
-                                rewriteElement(node);
-                                node.querySelectorAll && node.querySelectorAll("*").forEach(rewriteElement);
-                            }
-                        });
+                        if (mutation.type === "childList") {
+                            mutation.addedNodes.forEach(node => {
+                                if (node.nodeType === Node.ELEMENT_NODE) {
+                                    rewriteElement(node);
+                                    node.querySelectorAll && node.querySelectorAll("*").forEach(rewriteElement);
+                                }
+                            });
+                        } else if (mutation.type === "characterData" && mutation.target.parentNode?.tagName === "TITLE") {
+                            window.setTitle(mutation.target.parentNode.textContent);
+                        }
                     }
                 });
 
-                observer.observe(document.documentElement, { childList: true, subtree: true });
+                observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 
                 document.querySelectorAll("*").forEach(rewriteElement);
             })();
@@ -483,7 +494,7 @@
             if (document.getElementById(selectedTab)) document.getElementById(selectedTab).remove();
             return;
         }
-        if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
+        if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://") && remoteUrl.includes(" ") && remoteUrl.includes(".")) {
             remoteUrl = "http://" + remoteUrl;
         }
         if (search) {
@@ -508,6 +519,11 @@
     }
 
     window.loadPage = loadPage;
+    function setTitle(content) {
+        const tabMark = document.getElementById(`tab${selectedTab}`);
+        if (tabMark) tabMark.children[0].textContent = content;
+    }
+    window.setTitle = setTitle;
     loadPage(targetUrl);
 </script>
 </body>
