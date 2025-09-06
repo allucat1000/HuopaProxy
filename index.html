@@ -27,8 +27,8 @@
       background-color: white;
     }
 
-    input {
-        width: calc(100% - 3em);
+    #searchInput {
+        width: calc(100% - 7em);
         height: 0.7em;
         padding: 1em;
         border-radius: 2em;
@@ -37,7 +37,7 @@
         border-style: solid;
         border-width: 1px;
         position: absolute;
-        left: 50%;
+        left: calc(50% - 1.5em);
         top: 4.5em;
         transform: translateX(-50%);
         color: white;
@@ -45,11 +45,11 @@
         outline: none;
     }
 
-    input:hover {
+    #searchInput:hover {
         background-color: rgb(50, 50, 50);
     }
 
-    input:focus {
+    #searchInput:focus {
         border-color: #42c3ed;
         border-width: 1.5px;
     }
@@ -117,6 +117,55 @@
     #innerTabs {
         display: flex;
     }
+
+    #devtools {
+        position: absolute;
+        right: 0;
+        width: 15em;
+        height: calc(100% - 6.75em);
+        bottom: 0;
+        background-color: rgb(40, 40, 40);
+        display: none;
+        border-left-style: solid;
+        border-color: rgb(70, 70, 70);
+        z-index: 1;
+    }
+
+    .devtoolsHeading {
+        margin: 0;
+        padding: 1em;
+        padding-bottom: 0.5em;
+    }
+
+    #devtoolsConsoleEval {
+        width: calc(100% - 2.5em);
+        margin: 0 auto;
+        display: block;
+        background-color: rgb(50, 50, 50);
+        border-radius: 0.5em;
+        padding: 0.5em;
+        outline: none;
+        color: white;
+        border-style: solid;
+        border-width: thin;
+        border-color: rgb(60, 60, 60);
+    }
+
+    #devtoolsToggle {
+        position: absolute;
+        top: 6.33em;
+        right: 1em;
+        background-color: rgb(50, 50, 50);
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        color: white;
+        border-style: solid;
+        border-color: rgb(70, 70, 70);
+        font-size: x-small;
+        border-width: thin;
+        cursor: pointer;
+    }
 </style>
 </head>
 <body>
@@ -129,8 +178,17 @@
     </div>
     <button id="newTabButton" onclick="newTab()">+</button>
 </div>
+<button id="devtoolsToggle" onclick="toggleDevtools()">Dev</button>
+<div id="devtools">
+    <h3 class="devtoolsHeading">Console</h3>
+    <div id="devtoolsConsole"></div>
+    <div style="border-style: none; border-bottom-style: solid; width: calc(100% - 1.5em); margin: auto; margin-bottom: 0.5em; border-color: rgb(100, 100, 100);"></div>
+    <input id="devtoolsConsoleEval">
+</div>
 <input id="searchInput">
 <script type="module">
+    let devtoolsOpen = false;
+    let siteLogs = {}
     const url = new URL(window.location.href);
     const kiosk = url.searchParams.get("kiosk");
     let selectedTab = 0;
@@ -144,6 +202,7 @@
         document.getElementById("0").style.height = "100%";
         document.getElementById("0").style.top = "0";
     }
+    let devtoolsInputHandler;
     let currentUrl = null;
     const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
     const server = new URL(serverUrl);
@@ -162,16 +221,19 @@
     window.addEventListener('keydown', reloadHotkey, { capture: true });
 
     async function closeTab(id) {
+        if (devtoolsOpen) closeDevtools()
         const tab = document.getElementById(id);
         const tabMark = document.getElementById(`tab${id}`);
         if (tab) tab.remove();
         if (tabMark) tabMark.remove();
+        delete siteLogs[id];
 
         const remainingTabs = document.getElementById("innerTabs").children;
 
         if (remainingTabs.length === 0) {
             selectedTab = null;
             newTabId = 0;
+            siteLogs = {};
             searchInput.disabled = true;
             searchInput.value = "";
             return;
@@ -182,6 +244,98 @@
             const newId = firstRemaining.id.replace("tab", "");
             openTab(newId);
         }
+    }
+
+    async function toggleDevtools() {
+        if (selectedTab == null) { throw new Error("Unable to open devtools, no tab open!"); return; }
+        if (!devtoolsOpen) openDevtools(selectedTab); else closeDevtools();
+    }
+    window.toggleDevtools = toggleDevtools;
+
+    function closeDevtools() {
+        const devtools = document.getElementById("devtools");
+        devtools.style.display = "none";
+        devtoolsOpen = false;
+        const input = document.getElementById("devtoolsConsoleEval");
+        input.removeEventListener("keydown", devtoolsInputHandler);
+        if (selectedTab == null) return;
+        const frame = document.getElementById(selectedTab);
+        frame.style.width = "100%";
+    }
+
+    async function openDevtools(id) {
+        devtoolsOpen = true;
+        const devtools = document.getElementById("devtools");
+        devtools.style.display = "block";
+        const consoleLogs = document.getElementById("devtoolsConsole");
+        const frame = document.getElementById(id);
+        if (!frame) { console.error("Unable to open devtools, unknown tab ID!"); closeDevtools(); return; }
+        frame.style.width = "calc(100% - 15em)";
+        consoleLogs.innerHTML = "";
+        let logs = [...siteLogs[id]].reverse();
+        const evalInput = document.getElementById("devtoolsConsoleEval");
+        devtoolsInputHandler = (e) => {
+            if (e.key == "Enter") {
+                e.preventDefault();
+                const val = evalInput.value;
+                evalInput.value = "";
+                siteLogs[id].push(["input", val]);
+                try {
+                    if (!frame.contentWindow.eval) closeDevtools();
+                    frame.contentWindow.eval(val);
+                } catch (e) {
+                    siteLogs[id].push(["error", e.message + " @ VM:1"]);
+                }
+            }
+        }
+        evalInput.addEventListener("keydown", devtoolsInputHandler) 
+        for (const log of logs) {
+            const logDiv = document.createElement("div");
+            logDiv.style = `
+            width: calc(100% - 2em);
+            padding: 0.5em;
+            background-color: rgba(77, 77, 77, 0.7);
+            border-color: rgb(65, 0, 0);
+            margin: 0.5em;
+            border-radius: 0.5em;
+            overflow-wrap: break-word;`
+            ;
+            logDiv.textContent = log[1];
+            if (log[0] == "error") logDiv.style.backgroundColor = "rgb(200, 0, 0)";
+            if (log[0] == "input") logDiv.style.backgroundColor = "rgba(0, 0, 0, 0)";
+            if (log[0] == "warn") { logDiv.style.backgroundColor = "rgb(253, 178, 43)"; logDiv.style.color = "black"; };
+            consoleLogs.prepend(logDiv);
+        }
+        async function updateLogs() {
+            if (logs.length !== siteLogs[id].length) {
+                const oldLength = logs.length;
+                logs = [...siteLogs[id]];
+
+                for (let i = oldLength; i < logs.length; i++) {
+                    const log = logs[i];
+                    const logDiv = document.createElement("div");
+                    logDiv.style = `
+                        width: calc(100% - 2em);
+                        padding: 0.5em;
+                        background-color: rgba(77, 77, 77, 0.7);
+                        border-color: rgb(65, 0, 0);
+                        margin: 0.5em;
+                        border-radius: 0.5em;
+                        overflow-wrap: break-word;
+                    `;
+                    logDiv.textContent = log[1];
+                    if (log[0] === "error") logDiv.style.backgroundColor = "rgb(200, 0, 0)";
+                    if (log[0] === "warn")  logDiv.style.backgroundColor = "rgb(160, 200, 0)";
+                    consoleLogs.append(logDiv);
+                }
+            }
+            await new Promise(resolve => setTimeout(resolve, 250));
+            if (!devtoolsOpen) return;
+            updateLogs();
+        }
+
+        updateLogs()
+
     }
 
     async function newTab() {
@@ -217,6 +371,7 @@
     }
 
     async function openTab(id) {
+        if (devtoolsOpen) closeDevtools()
         const newTab = document.getElementById(Number(id));
         if (!newTab) throw new Error("Tried to access tab that doesn't exist! Id: " + id);
 
@@ -263,6 +418,26 @@
         return abs.href;
         } catch { return u; }
     }
+    function hookConsole(frame, id) {
+        const win = frame.contentWindow;
+        if (win._consoleHooked) return;
+        win._consoleHooked = true;
+
+        const levels = ["log", "warn", "error", "info"];
+        for (const level of levels) {
+            const orig = win.console[level];
+            win.console[level] = (...args) => {
+                siteLogs[id].push([level, args.map(a => String(a)).join(" ") + " @ VM:1"]);
+            };
+        }
+
+        win.addEventListener("error", e => {
+            siteLogs[id].push(["error", e.message + " @ " + e.filename.split("/").pop() + ":" + e.lineno]);
+        });
+        win.addEventListener("unhandledrejection", e => {
+            siteLogs[id].push(["error", "Unhandled rejection: " + e.reason]);
+        });
+    }
     function renderIntoIframe(html, remoteUrl) {
         currentUrl = remoteUrl;
         if (!kiosk) searchInput.value = currentUrl;
@@ -299,6 +474,11 @@
         const titleEl = document.querySelector("title");
         if (titleEl) window.setTitle(titleEl.textContent);
         `);
+
+        // Logs
+        siteLogs[selectedTab] = []
+        window.siteLogs = siteLogs
+        hookConsole(frame, selectedTab);
 
         // Safe nav patches
         win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; };
@@ -488,6 +668,8 @@
 
 
     async function loadPage(rawRemoteUrl, search = false) {
+        delete siteLogs[selectedTab];
+        if (devtoolsOpen) closeDevtools()
         let remoteUrl = rawRemoteUrl;
 
         if (rawRemoteUrl === "about:blank") {
