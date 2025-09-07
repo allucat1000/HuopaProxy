@@ -184,19 +184,18 @@
 </div>
 <button id="devtoolsToggle" onclick="toggleDevtools()">Dev</button>
 <div id="devtools">
-    <div style="margin: 1em 0; background-color: rgb(40, 40, 40);">
+    <div style="margin: 0; background-color: rgb(40, 40, 40); position: fixed; padding: 1em; width: 100%; z-index: 2;">
         <h3 class="devtoolsHeading" id="consoleButton">Console</h3>
         <h3 class="devtoolsHeading" id="elementsButton">Elements</h3>
     </div>
-    <div id="devtoolsConsole">
+    <div id="devtoolsConsole" style="margin-top: 60px;">
         <div id="devtoolsConsoleData"></div>
         <div style="border-style: none; border-bottom-style: solid; width: calc(100% - 1.5em); margin: auto; margin-bottom: 0.5em; border-color: rgb(100, 100, 100);"></div>
         <input id="devtoolsConsoleEval">
     </div>
-    <div style="display: none;" id="devtoolsElements">
-        <div id="devtoolsElementTree">
-
-        </div>
+    <div id="devtoolsElemSelect" class="devtoolsHeading" style="position: fixed; background-color: rgb(40, 40, 40); padding: 0.5em 1em; width: 100%; margin: 0; margin-top: 3.25em; z-index: 2; display: none;">Select element</div>
+    <div style="display: none; margin-top: 60px;" id="devtoolsElements">
+        <div style="margin-top: 90px;" id="devtoolsElementTree"></div>
     </div>
 </div>
 <input id="searchInput">
@@ -266,6 +265,13 @@
     }
     window.toggleDevtools = toggleDevtools;
 
+    let lastHovered = null;
+    let savedColor = "";
+    let savedSelect = "";
+    let contextmenuOpen = false;
+    let elementFind = false;
+    let selectedElem = null;
+
     function closeDevtools() {
         const devtools = document.getElementById("devtools");
         document.getElementById("devtoolsElementTree").innerHTML = "";
@@ -273,6 +279,10 @@
         devtoolsOpen = false;
         const input = document.getElementById("devtoolsConsoleEval");
         input.removeEventListener("keydown", devtoolsInputHandler);
+        if (lastHovered) lastHovered.style.backgroundColor = savedColor;
+        lastHovered = null;
+        if (selectedElem) selectedElem.style.backgroundColor = savedSelect;
+        selectedElem = null;
         if (selectedTab == null) return;
         const frame = document.getElementById(selectedTab);
         frame.style.width = "100%";
@@ -289,6 +299,7 @@
             document.getElementById("consoleButton").style.borderBottomStyle = "solid";
             document.getElementById("devtoolsConsole").style.display = "block";
             document.getElementById("devtoolsElements").style.display = "none";
+            document.getElementById("devtoolsElemSelect").style.display = "none";
             document.getElementById("elementsButton").style.borderBottomStyle = "none";
         }
         const consoleLogs = document.getElementById("devtoolsConsoleData");
@@ -298,6 +309,7 @@
             document.getElementById("devtoolsConsole").style.display = "none";
             document.getElementById("consoleButton").style.borderBottomStyle = "none";
             document.getElementById("devtoolsElements").style.display = "block";
+            document.getElementById("devtoolsElemSelect").style.display = "block";
             document.getElementById("elementsButton").style.borderBottomStyle = "solid";
             const elemTree = document.getElementById("devtoolsElementTree");
             elemTree.innerHTML = "";
@@ -333,14 +345,72 @@
             if (!devtoolsOpen) return;
             elementRenderLoop(el, renderTo);
         }
-        let lastHovered = null;
-        let savedColor = "";
-        let contextmenuOpen = false;
+        
+        let elemLink = new WeakMap()
+        let selectListenerOver = (e) => {
+            e.stopPropagation();
+            let el = e.target;
+            if (noHoverElems.includes(el.tagName)) return;
+            if (lastHovered && lastHovered !== el) {
+                lastHovered.style.backgroundColor = savedColor;
+            }
+            if (lastHovered !== el) savedColor = el.style.backgroundColor || "";
+            el.style.backgroundColor = "#1e90ff80";
+            lastHovered = el;
+        }
+        let noHoverElems = ["HTML","HEAD","META","LINK","SCRIPT","SOURCE","BASE","STYLE","TITLE"]
+        let selectListenerOut = (e) => {
+            e.stopPropagation();
+            let el = e.target
+            if (noHoverElems.includes(el.tagName)) return;
+            if (lastHovered === el) {
+                el.style.backgroundColor = savedColor;
+                lastHovered = null;
+            }
+        }
+        let selectListenerClick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            selectElem(e.target);
+            elementFind = false;
+            frame.contentDocument.removeEventListener("mouseover", selectListenerOver, true)
+            frame.contentDocument.removeEventListener("mouseout", selectListenerOut, true);
+            frame.contentDocument.removeEventListener("click", selectListenerClick, true)
+        }
+        document.getElementById("devtoolsElemSelect").onclick = () => {
+            if (!elementFind) {
+                frame.contentDocument.body.style.cursor = "crosshair";
+                elementFind = true;
+                frame.contentDocument.addEventListener("mouseover", selectListenerOver, true)
+                frame.contentDocument.addEventListener("mouseout", selectListenerOut, true);
+                frame.contentDocument.addEventListener("click", selectListenerClick, true)
+            } else {
+                elementFind = false;
+                frame.contentDocument.body.style.cursor = "";
+                frame.contentDocument.removeEventListener("mouseover", selectListenerOver, true)
+                frame.contentDocument.removeEventListener("mouseout", selectListenerOut, true);
+                frame.contentDocument.removeEventListener("click", selectListenerClick, true)
+            }
+        }
+        function selectElem(el) {
+            const oldRend = elemLink.get(selectedElem);
+            if (oldRend) oldRend.style.backgroundColor = "rgba(80, 80, 80, 0.7)";
+            if (selectedElem) if (selectedElem.style.backgroundColor !== "#1e90ff80") selectedElem.style.backgroundColor = savedSelect;
+            if (savedSelect !== "#1e90ff80") savedColor = el.style.backgroundColor; else savedSelect = "";
+            selectedElem = el;
+            selectedElem.style.backgroundColor = "#1e90ff80";
+            frame.contentDocument.body.style.cursor = "";
+            const rend = elemLink.get(el);
+            rend.focus();
+            rend.scrollIntoView({ behavior: "smooth", block: "center" });
+            rend.style.backgroundColor = "rgba(30, 50, 200, 0.7)";
+        }
         function renderElementTree(el, renderTo, root = false, depth = 0) {
             if (contextmenuOpen) return
             const childrenRend = document.createElement("div");
             if (!root) {
                 const rendEl = document.createElement("div");
+                rendEl.tabIndex = "-1";
                 rendEl.style = "margin: 0.25em; background-color: rgba(80, 80, 80, 0.7); padding: 0.25em; cursor: pointer; overflow-wrap: anywhere; user-select: none; -webkit-user-select: none; -ms-user-select: none;";
                 rendEl.style.marginLeft = depth + "px";
                 let attributeRender = []
@@ -356,17 +426,18 @@
                         attributeRender.push(`${attr.name}="${attrVal}"`);
                     }
                 }
+                if (selectedElem == el) rendEl.style.backgroundColor = "rgba(30, 50, 200, 0.7)";
+                elemLink.set(el, rendEl);
                 let data = `<${el.tagName.toLowerCase()}>`;
                 if (attributeRender.length > 0) {
                     data = `<${el.tagName.toLowerCase()} ${attributeRender.join(" ")}>`
                 }
                 let blocked = ["DIV","HTML","HEAD","BODY"];
                 let voidTags = ["AREA","BASE","BR","COL","EMBED","HR","IMG","INPUT","LINK","META","PARAM","SOURCE","TRACK","WBR"];
-                let noHoverElems = ["HTML","HEAD","META","LINK","SCRIPT","SOURCE","BASE","STYLE","TITLE"]
                 if (closedElems.has(el)) {
                     childrenRend.style.display = "none";
                     rendEl.style.backgroundColor = "rgba(60, 60, 60, 0.7)";
-                }  
+                }
                 rendEl.onmouseenter = () => {
                     if (noHoverElems.includes(el.tagName)) return;
                     if (lastHovered && lastHovered !== el) {
@@ -386,6 +457,7 @@
                 };
 
                 rendEl.onclick = () => {
+                    selectElem(el)
                     if (childrenRend.style.display == "none") {
                         childrenRend.style.display = "block";
                         rendEl.style.backgroundColor = "rgba(80, 80, 80, 0.7)";
@@ -580,7 +652,7 @@
         for (const level of levels) {
             const orig = win.console[level];
             win.console[level] = (...args) => {
-                siteLogs[id].push([level, args.map(a => String(a)).join(" ") + " @ VM:1"]);
+                siteLogs[id].push([level, args.map(a => String(a)).join(" ") + " @ <anonymous:1>"]);
             };
         }
 
