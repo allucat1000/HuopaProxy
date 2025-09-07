@@ -184,10 +184,10 @@
 </div>
 <button id="devtoolsToggle" onclick="toggleDevtools()">Dev</button>
 <div id="devtools">
-    <div style="margin: 1em 0;"></div>
-    <h3 class="devtoolsHeading" id="consoleButton">Console</h3>
-    <h3 class="devtoolsHeading" id="elementsButton">Elements</h3>
-    <div style="margin: 1em 0;"></div>
+    <div style="margin: 1em 0; background-color: rgb(40, 40, 40);">
+        <h3 class="devtoolsHeading" id="consoleButton">Console</h3>
+        <h3 class="devtoolsHeading" id="elementsButton">Elements</h3>
+    </div>
     <div id="devtoolsConsole">
         <div id="devtoolsConsoleData"></div>
         <div style="border-style: none; border-bottom-style: solid; width: calc(100% - 1.5em); margin: auto; margin-bottom: 0.5em; border-color: rgb(100, 100, 100);"></div>
@@ -324,15 +324,20 @@
         let closedElems = new WeakSet();
 
         async function elementRenderLoop(el, renderTo) {
-            renderTo.innerHTML = "";
-            renderElementTree(el.contentDocument, renderTo, true);
+            if (document.getElementById("devtoolsElements").style.display === "none") return;
+            if (!contextmenuOpen) {
+                renderTo.innerHTML = "";
+                renderElementTree(el.contentDocument, renderTo, true);
+            }
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (!devtoolsOpen) return;
             elementRenderLoop(el, renderTo);
         }
         let lastHovered = null;
         let savedColor = "";
+        let contextmenuOpen = false;
         function renderElementTree(el, renderTo, root = false, depth = 0) {
+            if (contextmenuOpen) return
             const childrenRend = document.createElement("div");
             if (!root) {
                 const rendEl = document.createElement("div");
@@ -391,11 +396,33 @@
                         closedElems.add(el);
                     }
                 };
+
+                rendEl.addEventListener("contextmenu", (e) => {
+                    e.preventDefault()
+                    if (contextmenuOpen) return;
+                    contextmenuOpen = true;
+                    const options = document.createElement("div");
+                    options.style = "background-color: 100, 100, 100, 0.7); border-style: solid; border-radius: 0.25em; margin: 0.5em; padding: 0; border-color: rgb(100, 100, 100); cursor: default;";
+                    const delButton = document.createElement("button");
+                    delButton.style = "border-radius: 0.25em; padding: 0.5em; margin: 0.5em; cursor: pointer; background-color: rgb(60, 60, 60, 0.7); color: white; border-style: solid; border-color: rgb(100, 100, 100);"
+                    delButton.textContent = "Delete";
+                    delButton.onclick = () => {
+                        contextmenuOpen = false;
+                        el.remove();
+                        options.remove();
+                    }
+                    const closeButton = document.createElement("button");
+                    closeButton.style = "border-radius: 0.25em; padding: 0.5em; margin: 0.5em; cursor: pointer; background-color: rgb(60, 60, 60, 0.7); color: white; border-style: solid; border-color: rgb(100, 100, 100);"
+                    closeButton.textContent = "Cancel";
+                    options.append(delButton, closeButton);
+                    closeButton.onclick = () => { contextmenuOpen = false; options.remove(); }
+                    rendEl.append(options);
+                })
                 if (el.textContent.trim() && !blocked.includes(el.tagName) && el.children.length < 1) {
                     const child = document.createElement("p");
-                    child.style = "margin: 0.25em; background-color: rgba(60, 60, 60, 0.7); padding: 0.25em;";
+                    child.style = "margin: 0.25em; background-color: rgba(60, 60, 60, 0.7); padding: 0.25em; overflow-wrap: anywhere;";
                     child.style.marginLeft = depth + 10 + "px";
-                    child.textContent = el.textContent;
+                    if (el.textContent.length >= 500) child.textContent = el.textContent.slice(0, 500) + "..."; else child.textContent = el.textContent.slice(0, 500);
                     childrenRend.append(child);
                 }
                 rendEl.textContent = data;
@@ -403,7 +430,7 @@
                 renderTo.append(childrenRend);
                 if (el.textContent.trim() && !voidTags.includes(el.tagName)) {
                     const closingTag = document.createElement("p");
-                    closingTag.style = "margin: 0.25em; background-color: rgba(110, 110, 110, 0.2); padding: 0.25em; user-select: none; -webkit-user-select: none; -ms-user-select: none;";
+                    closingTag.style = "margin: 0.25em; background-color: rgba(110, 110, 110, 0.2); padding: 0.25em; user-select: none; -webkit-user-select: none; -ms-user-select: none; overflow-wrap: anywhere;";
                     closingTag.style.marginLeft = depth + "px";
                     closingTag.textContent = `</${el.tagName.toLowerCase()}>`;
                     renderTo.append(closingTag)
