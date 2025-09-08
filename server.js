@@ -153,7 +153,7 @@ app.use((err, req, res, next) => {
 
 function rewriteUrl(baseServerUrl, targetUrl) {
   try {
-    if (!targetUrl || targetUrl.startsWith("data:") || targetUrl.startsWith("javascript:")) {
+    if (!targetUrl || targetUrl.startsWith("data:") || targetUrl.startsWith("javascript:") || targetUrl.startsWith("wss:") || targetUrl.startsWith("ws:")) {
       return targetUrl;
     }
     const baseUrl = new URL(targetUrl).origin;
