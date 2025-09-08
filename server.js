@@ -539,13 +539,6 @@ async function handleProxy(req, res, method) {
                     return origOpen.apply(this, arguments);
                     };
 
-                    // Patch WebSocket
-                    const OrigWebSocket = window.WebSocket;
-                    window.WebSocket = function(url, protocols) {
-                    return new OrigWebSocket(proxify(url), protocols);
-                    };
-                    window.WebSocket.prototype = OrigWebSocket.prototype;
-
                     // Safe location overrides
                     try {
                     Object.defineProperty(top, "location", {
