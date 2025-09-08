@@ -9,7 +9,7 @@ const disabled = Deno.env.get("disabled") || false;
 const blockedIps = (Deno.env.get("blockedIps") || "").split(",");
 const noRatelimitIps = (Deno.env.get("noRatelimitIps") || "").split(",");
 
-const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
+const serverUrl = "http://localhost:3000/proxy"; // https://allucat1000-huopaproxy-29.deno.dev/proxy
 const app = express();
 
 const sessions = new Map();
@@ -175,7 +175,7 @@ function patchImports(code, serverUrl, targetUrl) {
         /(\b(?:import|export)\s*.*?from\s*)['"]([^'"]+)['"]/g,
         (match, prefix, path) => {
             if (path.startsWith("http") || path.startsWith("data:")) return match;
-            const abs = new URL(path, origin).href;
+            const abs = new URL(path, targetUrl).href;
             return `${prefix}"${serverUrl}?url=${encodeURIComponent(abs)}"`;
         }
     );
@@ -185,7 +185,7 @@ function patchImports(code, serverUrl, targetUrl) {
         /import\(\s*['"]([^'"]+)['"]\s*\)/g,
         (match, path) => {
             if (path.startsWith("http") || path.startsWith("data:")) return match;
-            const abs = new URL(path, origin).href;
+            const abs = new URL(path, targetUrl).href;
             return `import("${serverUrl}?url=${encodeURIComponent(abs)}")`;
         }
     );
@@ -195,7 +195,7 @@ function patchImports(code, serverUrl, targetUrl) {
         /module_or_path:\s*['"]([^'"]+)['"]/g,
         (match, path) => {
             if (path.startsWith("http") || path.startsWith("data:")) return match;
-            const abs = new URL(path, origin).href;
+            const abs = new URL(path, targetUrl).href;
             return `module_or_path: "${serverUrl}?url=${encodeURIComponent(abs)}"`;
         }
     );
