@@ -455,7 +455,6 @@
                         lastHovered = null;
                     }
                 };
-
                 rendEl.onclick = () => {
                     selectElem(el)
                     if (childrenRend.style.display == "none") {
@@ -643,6 +642,22 @@
         return abs.href;
         } catch { return u; }
     }
+
+    function rewriteUrl(baseServerUrl, targetUrl) {
+        try {
+            if (!targetUrl || targetUrl.startsWith("data:") || targetUrl.startsWith("javascript:") || targetUrl.startsWith("wss:") || targetUrl.startsWith("ws:")) {
+            return targetUrl;
+            }
+            const baseUrl = new URL(targetUrl).origin;
+            const resolved = new URL(targetUrl, baseUrl).href;
+            const proxied = new URL(baseServerUrl);
+            proxied.searchParams.append("url", resolved);
+            return proxied.href;
+        } catch (e) {
+            console.error("proxify failed for", targetUrl, e.message);
+            return targetUrl;
+        }
+    }
     function hookConsole(frame, id) {
         const win = frame.contentWindow;
         if (win._consoleHooked) return;
@@ -682,7 +697,7 @@
         frame.contentWindow.addEventListener("keydown", (e) => {
             if (e.key.toLowerCase() === "r" && e.ctrlKey) {
                 e.preventDefault();
-                loadPage(currentUrl);
+                loadPag(currentUrl);
             }
         });
 
@@ -712,6 +727,27 @@
             win.location.replace = (u) => loadPage(deproxify(u, remoteUrl));
             win.location.reload  = ()  => loadPage(remoteUrl);
         } catch {}
+
+        // SRI
+
+        doc.querySelectorAll("link[integrity], script[integrity]").forEach(el => {
+            el.removeAttribute("integrity");
+            el.removeAttribute("crossorigin");
+        });
+
+        // Imports
+
+        const origImport = frame.contentWindow.__proto__.import;
+
+        win.__proto__.import = async function (path) {
+            if (typeof path === "string") {
+                if (!path.startsWith("http") && !path.startsWith("data:") && !path.startsWith("//")) {
+                    const abs = new URL(path, win.location.href).href;
+                    path = rewriteUrl(serverUrl, abs);
+                }
+            }
+            return origImport(path);
+        };
 
         // Links
         doc.addEventListener("click", e => {
@@ -831,7 +867,7 @@
                     for (const [tag, attr] of Object.entries(attrMap)) {
                         if (el.tagName && el.tagName.toLowerCase() === tag) {
                             let val = el.getAttribute(attr);
-                            if (val && !val.startsWith("data:") && !val.startsWith("javascript:")) {
+                            if (val && !val.startsWith("data:") && !val.startsWith("javascript:") && !val.startsWith("ws:") && !val.startsWith("wss:")) {
                                 el.setAttribute(attr, rewriteUrlSafe(val));
                             }
                         }
