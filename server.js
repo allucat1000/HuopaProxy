@@ -9,7 +9,7 @@ const disabled = Deno.env.get("disabled") || false;
 const blockedIps = (Deno.env.get("blockedIps") || "").split(",");
 const noRatelimitIps = (Deno.env.get("noRatelimitIps") || "").split(",");
 
-const serverUrl = "http://localhost:3000/proxy"; // https://allucat1000-huopaproxy-29.deno.dev/proxy
+const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
 const app = express();
 
 const sessions = new Map();
