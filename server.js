@@ -547,7 +547,7 @@ async function handleProxy(req, res, method) {
 
                 // Dynamic imports
                 code = code.replace(
-                    /import\(['"]([^'"]+)['"]\)/g,
+                    /import\(\s*['"]([^'"]+)['"]\s*\)/g,
                     (match, path) => {
                         if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
                         const abs = new URL(path, origin).href;
@@ -567,6 +567,7 @@ async function handleProxy(req, res, method) {
 
                 return code;
             }
+
         } else if (contentType.includes("text/css")) {
             let body = await response.text();
             body = body.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
