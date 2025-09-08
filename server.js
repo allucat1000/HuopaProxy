@@ -172,7 +172,7 @@ function patchImports(code, serverUrl, targetUrl) {
 
     // Static imports and exports
     code = code.replace(
-        /(\b(?:import|export)\s*.*?from\s*)['"]([^'"]+)['"]/g,
+        /\b(?:import|export)\s+(?:[\s\S]*?)\s+from\s+(['"])([^'"]+)\1/g,
         (match, prefix, path) => {
             if (path.startsWith("http") || path.startsWith("data:")) return match;
             const abs = new URL(path, targetUrl).href;
@@ -182,7 +182,7 @@ function patchImports(code, serverUrl, targetUrl) {
 
     // Dynamic imports
     code = code.replace(
-        /import\(\s*['"]([^'"]+)['"]\s*\)/g,
+        /import\(\s*(['"])([^'"]+)\1\s*\)/g,
         (match, path) => {
             if (path.startsWith("http") || path.startsWith("data:")) return match;
             const abs = new URL(path, targetUrl).href;
@@ -192,7 +192,7 @@ function patchImports(code, serverUrl, targetUrl) {
 
     // WASM paths
     code = code.replace(
-        /module_or_path:\s*['"]([^'"]+)['"]/g,
+        /module_or_path:\s*(['"])([^'"]+)\1/g,
         (match, path) => {
             if (path.startsWith("http") || path.startsWith("data:")) return match;
             const abs = new URL(path, targetUrl).href;
