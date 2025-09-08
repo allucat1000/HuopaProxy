@@ -1,7 +1,7 @@
 import express from "npm:express";
 import * as cheerio from "npm:cheerio";
 import { Buffer } from "node:buffer";
-import { rateLimit } from 'npm:express-rate-limit'
+import rateLimit from 'npm:express-rate-limit';
 import { CookieJar } from "npm:tough-cookie";
 import { init, parse } from 'npm:es-module-lexer';
 
@@ -99,8 +99,8 @@ let internalErrorHtml = `
 
 const limiter = rateLimit({
     skip: (req, res) => noRatelimitIps.includes(req.ip),
-	windowMs: 8 * 60 * 100,
-	limit: 200,
+	windowMs: 60 * 1000,
+	max: 500,
 	standardHeaders: 'draft-8',
 	legacyHeaders: false,
 	ipv6Subnet: 64,
@@ -172,7 +172,6 @@ function rewriteUrl(baseServerUrl, targetUrl) {
 await init;
 
 function patchImports(code, serverUrl, targetUrl) {
-
     const [imports] = parse(code);
 
     let patchedCode = '';
@@ -180,20 +179,25 @@ function patchImports(code, serverUrl, targetUrl) {
 
     for (const imp of imports) {
         const specifier = code.slice(imp.s, imp.e);
+
+        const isDynamic = code.slice(imp.s - 7, imp.s).trim().startsWith('import(');
+
         let replacement = specifier;
 
         if (!specifier.startsWith('http') && !specifier.startsWith('data:')) {
             const abs = new URL(specifier, targetUrl).href;
-            replacement = `"${serverUrl}?url=${encodeURIComponent(abs)}"`;
+            if (isDynamic) {
+                replacement = `"${serverUrl}?url=${encodeURIComponent(abs)}"`; 
+            } else {
+                replacement = `${serverUrl}?url=${encodeURIComponent(abs)}`;
+            }
         }
 
         patchedCode += code.slice(lastIndex, imp.s) + replacement;
         lastIndex = imp.e;
     }
 
-    // Append remaining code
     patchedCode += code.slice(lastIndex);
-
     return patchedCode;
 }
 
