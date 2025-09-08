@@ -174,21 +174,21 @@ function patchImports(code, serverUrl, targetUrl) {
     code = code.replace(/\b(?:import|export)\s.*?from\s+['"]([^'"]+)['"]/g, (match, path) => {
         if (path.startsWith("http") || path.startsWith("data:")) return match;
         const abs = new URL(path, origin).href;
-        return `from "${serverUrl}/proxy?url=${encodeURIComponent(abs)}"`;
+        return `from "${serverUrl}?url=${encodeURIComponent(abs)}"`;
     });
 
     // Dynamic imports
     code = code.replace(/import\(['"]([^'"]+)['"]\)/g, (match, path) => {
         if (path.startsWith("http") || path.startsWith("data:")) return match;
         const abs = new URL(path, origin).href;
-        return `import("${serverUrl}/proxy?url=${encodeURIComponent(abs)}")`;
+        return `import("${serverUrl}?url=${encodeURIComponent(abs)}")`;
     });
 
     // WASM paths
     code = code.replace(/module_or_path:\s*['"]([^'"]+)['"]/g, (match, path) => {
         if (path.startsWith("http") || path.startsWith("data:")) return match;
         const abs = new URL(path, origin).href;
-        return `module_or_path: "${serverUrl}/proxy?url=${encodeURIComponent(abs)}"`;
+        return `module_or_path: "${serverUrl}?url=${encodeURIComponent(abs)}"`;
     });
 
     return code;
