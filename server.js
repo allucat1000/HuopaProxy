@@ -170,26 +170,35 @@ function rewriteUrl(baseServerUrl, targetUrl) {
 function patchImports(code, serverUrl, targetUrl) {
     const origin = new URL(targetUrl).origin;
 
-    // Static imports
-    code = code.replace(/\b(?:import|export)\s*(?:[\s\S]*?)\s*from\s*['"]([^'"]+)['"]/g, (match, path) => {
-        if (path.startsWith("http") || path.startsWith("data:")) return match;
-        const abs = new URL(path, origin).href;
-        return `from "${serverUrl}?url=${encodeURIComponent(abs)}"`;
-    });
+    // Static imports / exports
+    code = code.replace(
+        /(\b(?:import|export)\s.*?from\s+)['"]([^'"]+)['"]/g,
+        (match, prefix, path) => {
+            if (path.startsWith("http") || path.startsWith("data:")) return match;
+            const abs = new URL(path, origin).href;
+            return `${prefix}"${serverUrl}/proxy?url=${encodeURIComponent(abs)}"`;
+        }
+    );
 
     // Dynamic imports
-    code = code.replace(/import\(['"]([^'"]+)['"]\)/g, (match, path) => {
-        if (path.startsWith("http") || path.startsWith("data:")) return match;
-        const abs = new URL(path, origin).href;
-        return `import("${serverUrl}?url=${encodeURIComponent(abs)}")`;
-    });
+    code = code.replace(
+        /import\(\s*['"]([^'"]+)['"]\s*\)/g,
+        (match, path) => {
+            if (path.startsWith("http") || path.startsWith("data:")) return match;
+            const abs = new URL(path, origin).href;
+            return `import("${serverUrl}/proxy?url=${encodeURIComponent(abs)}")`;
+        }
+    );
 
     // WASM paths
-    code = code.replace(/module_or_path:\s*['"]([^'"]+)['"]/g, (match, path) => {
-        if (path.startsWith("http") || path.startsWith("data:")) return match;
-        const abs = new URL(path, origin).href;
-        return `module_or_path: "${serverUrl}?url=${encodeURIComponent(abs)}"`;
-    });
+    code = code.replace(
+        /module_or_path:\s*['"]([^'"]+)['"]/g,
+        (match, path) => {
+            if (path.startsWith("http") || path.startsWith("data:")) return match;
+            const abs = new URL(path, origin).href;
+            return `module_or_path: "${serverUrl}/proxy?url=${encodeURIComponent(abs)}"`;
+        }
+    );
 
     return code;
 }
