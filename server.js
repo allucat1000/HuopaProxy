@@ -146,7 +146,7 @@ app.use((err, req, res, next) => {
       console.error("Internal error:", err);
       res.status(500).send(internalErrorHtml);
       return;
-  }
+    }
 })
 
 function rewriteUrl(baseServerUrl, targetUrl) {
@@ -163,6 +163,43 @@ function rewriteUrl(baseServerUrl, targetUrl) {
     console.error("proxify failed for", targetUrl, e.message);
     return targetUrl;
   }
+}
+
+// (JS imports)
+
+function patchImports(code, serverUrl, targetUrl) {
+    const origin = new URL(targetUrl).origin;
+
+    code = code.replace(
+        /\b(?:import|export)[\s\S]*?from\s+['"]([^'"]+)['"]/g,
+        (match, path) => {
+            if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
+            const abs = new URL(path, origin).href;
+            return match.replace(path, rewriteUrl(serverUrl, abs));
+        }
+    );
+
+    // Dynamic imports
+    code = code.replace(
+        /import\(\s*['"]([^'"]+)['"]\s*\)/g,
+        (match, path) => {
+            if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
+            const abs = new URL(path, origin).href;
+            return `import("${rewriteUrl(serverUrl, abs)}")`;
+        }
+    );
+
+    // WASM
+    code = code.replace(
+        /module_or_path:\s*['"]([^'"]+)['"]/g,
+        (match, path) => {
+            if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
+            const abs = new URL(path, origin).href;
+            return `module_or_path: "${rewriteUrl(serverUrl, abs)}"`;
+        }
+    );
+
+    return code;
 }
 
 async function handleProxy(req, res, method) {
@@ -336,6 +373,15 @@ async function handleProxy(req, res, method) {
                         return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
                     });
                     $(el).html(css);
+                }
+            });
+
+            // JS imports in script tags
+
+            $("script").each((_, el) => {
+                const code = $(el).html();
+                if (code) {
+                    $(el).html(patchImports(code, serverUrl, targetUrl));
                 }
             });
 
@@ -532,41 +578,6 @@ async function handleProxy(req, res, method) {
             // Imports
 
             res.send(patchImports(body, serverUrl, targetUrl));
-
-            function patchImports(code, serverUrl, targetUrl) {
-                const origin = new URL(targetUrl).origin;
-
-                code = code.replace(
-                    /\b(?:import|export)[\s\S]*?from\s+['"]([^'"]+)['"]/g,
-                    (match, path) => {
-                        if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
-                        const abs = new URL(path, origin).href;
-                        return match.replace(path, rewriteUrl(serverUrl, abs));
-                    }
-                );
-
-                // Dynamic imports
-                code = code.replace(
-                    /import\(\s*['"]([^'"]+)['"]\s*\)/g,
-                    (match, path) => {
-                        if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
-                        const abs = new URL(path, origin).href;
-                        return `import("${rewriteUrl(serverUrl, abs)}")`;
-                    }
-                );
-
-                // WASM
-                code = code.replace(
-                    /module_or_path:\s*['"]([^'"]+)['"]/g,
-                    (match, path) => {
-                        if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
-                        const abs = new URL(path, origin).href;
-                        return `module_or_path: "${rewriteUrl(serverUrl, abs)}"`;
-                    }
-                );
-
-                return code;
-            }
 
         } else if (contentType.includes("text/css")) {
             let body = await response.text();
