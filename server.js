@@ -184,7 +184,7 @@ function patchImports(code, serverUrl, targetUrl) {
 
         if (!specifier.startsWith('http') && !specifier.startsWith('data:')) {
             const abs = new URL(specifier, targetUrl).href;
-            replacement = `${serverUrl}?url=${encodeURIComponent(abs)}`;
+            replacement = `"${serverUrl}?url=${encodeURIComponent(abs)}"`;
         }
 
         patchedCode += code.slice(lastIndex, imp.s) + replacement;
