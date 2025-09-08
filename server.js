@@ -171,7 +171,7 @@ function patchImports(code, serverUrl, targetUrl) {
     const origin = new URL(targetUrl).origin;
 
     // Static imports
-    code = code.replace(/\b(?:import|export)\s.*?from\s+['"]([^'"]+)['"]/g, (match, path) => {
+    code = code.replace(/\b(?:import|export)\s*(?:[\s\S]*?)\s*from\s*['"]([^'"]+)['"]/g, (match, path) => {
         if (path.startsWith("http") || path.startsWith("data:")) return match;
         const abs = new URL(path, origin).href;
         return `from "${serverUrl}?url=${encodeURIComponent(abs)}"`;
