@@ -505,10 +505,16 @@ async function handleProxy(req, res, method) {
 
                     // Wrap URL for proxying
                     function proxify(u) {
-                    const resolved = new URL(deproxify(u), pageBase).href;
-                    const p = new URL(server.href);
-                    p.searchParams.set("url", resolved);
-                    return p.href;
+                        const resolved = new URL(deproxify(u), pageBase).href;
+                        if (resolved.startsWith("ws:") || 
+                            resolved.startsWith("wss:") || 
+                            resolved.startsWith("data:") || 
+                            resolved.startsWith("javascript:")) {
+                            return resolved;
+                        }
+                        const p = new URL(server.href);
+                        p.searchParams.set("url", resolved);
+                        return p.href;
                     }
 
                     // Patch fetch
