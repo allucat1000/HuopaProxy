@@ -297,255 +297,296 @@ async function handleProxy(req, res, method) {
         let contentType = response.headers.get("content-type") || "";
         res.set("content-type", contentType);
         if (contentType.includes("text/html")) {
-        let body = await response.text();
-        const $ = cheerio.load(body);
-        const pageOrigin = new URL(targetUrl).origin;
-        const baseTag = `<base href="${pageOrigin}/">`;
-        $("head").prepend(baseTag + "\n");
-        const attrMap = {
-            a: "href",
-            link: "href",
-            img: "src",
-            script: "src",
-            iframe: "src",
-            frame: "src",
-            embed: "src",
-            object: "data",
-            source: "src",
-            track: "src",
-            audio: "src",
-            video: "src",
-            form: "action",
-            area: "href",
-        };
+            let body = await response.text();
+            const $ = cheerio.load(body);
+            const pageOrigin = new URL(targetUrl).origin;
+            const baseTag = `<base href="${pageOrigin}/">`;
+            $("head").prepend(baseTag + "\n");
+            const attrMap = {
+                a: "href",
+                link: "href",
+                img: "src",
+                script: "src",
+                iframe: "src",
+                frame: "src",
+                embed: "src",
+                object: "data",
+                source: "src",
+                track: "src",
+                audio: "src",
+                video: "src",
+                form: "action",
+                area: "href",
+            };
 
-        for (const [tag, attr] of Object.entries(attrMap)) {
-            $(tag).each((_, el) => {
-            let val = $(el).attr(attr);
-            if (val && !val.startsWith("data:") && !val.startsWith("javascript:")) {
-                $(el).attr(attr, rewriteUrl(serverUrl, new URL(val, targetUrl).href));
+            for (const [tag, attr] of Object.entries(attrMap)) {
+                $(tag).each((_, el) => {
+                let val = $(el).attr(attr);
+                if (val && !val.startsWith("data:") && !val.startsWith("javascript:")) {
+                    $(el).attr(attr, rewriteUrl(serverUrl, new URL(val, targetUrl).href));
+                }
+                });
             }
+            $("style").each((_, el) => {
+                let css = $(el).html();
+                if (css) {
+                    css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
+                        let clean = url.trim();
+                        if (clean.startsWith("data:")) return `url(${url})`;
+                        return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
+                    });
+                    $(el).html(css);
+                }
             });
-        }
-        $("style").each((_, el) => {
-            let css = $(el).html();
-            if (css) {
-                css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
-                    let clean = url.trim();
-                    if (clean.startsWith("data:")) return `url(${url})`;
-                    return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
-                });
-                $(el).html(css);
-            }
-        });
 
-        $("[style]").each((_, el) => {
-            let css = $(el).attr("style");
-            if (css) {
-                css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
-                    let clean = url.trim();
-                    if (clean.startsWith("data:")) return `url(${url})`;
-                    return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
-                });
-                $(el).attr("style", css);
-            }
-        });
+            $("[style]").each((_, el) => {
+                let css = $(el).attr("style");
+                if (css) {
+                    css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
+                        let clean = url.trim();
+                        if (clean.startsWith("data:")) return `url(${url})`;
+                        return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
+                    });
+                    $(el).attr("style", css);
+                }
+            });
 
 
-        $("img, source").each((_, el) => {
-            let srcset = $(el).attr("srcset");
-            if (srcset) {
-            let rewritten = srcset
-                .split(",")
-                .map(entry => {
-                let [url, size] = entry.trim().split(/\s+/, 2);
-                return rewriteUrl(serverUrl, url) + (size ? " " + size : "");
-                })
-                .join(", ");
-            $(el).attr("srcset", rewritten);
-            }
-        });
-        if (clientVersion == "min") {
-            $("body").append(`
+            $("img, source").each((_, el) => {
+                let srcset = $(el).attr("srcset");
+                if (srcset) {
+                let rewritten = srcset
+                    .split(",")
+                    .map(entry => {
+                    let [url, size] = entry.trim().split(/\s+/, 2);
+                    return rewriteUrl(serverUrl, url) + (size ? " " + size : "");
+                    })
+                    .join(", ");
+                $(el).attr("srcset", rewritten);
+                }
+            });
+            if (clientVersion == "min") {
+                $("body").append(`
+                    <script>
+                    (function() {
+                        const server = new URL(${JSON.stringify(serverUrl)});
+                        const pageBase = new URL(${JSON.stringify(targetUrl)});
+                        const clV = ${JSON.stringify(clientVersion)};
+
+                        function deproxify(u) {
+                            try {
+                                const abs = new URL(u, pageBase);
+                                if (abs.origin === server.origin && abs.pathname === server.pathname) {
+                                    const inner = abs.searchParams.get("url");
+                                    return inner || abs.href;
+                                }
+                                return abs.href;
+                            } catch(e) { return u; }
+                        }
+
+                        function proxify(u) {
+                            const resolved = new URL(deproxify(u), pageBase).href;
+                            const p = new URL(server.href);
+                            p.searchParams.set("url", resolved);
+                            return p.href;
+                        }
+
+                        // Patch fetch
+                        const origFetch = window.fetch;
+                        window.fetch = function(input, init = {}) {
+                            if (typeof input === "string") {
+                                input = proxify(input);
+                            } else if (input instanceof Request) {
+                                input = new Request(proxify(input.url), {
+                                    method: input.method,
+                                    headers: input.headers,
+                                    body: input.body,
+                                    mode: input.mode,
+                                    credentials: input.credentials,
+                                    cache: input.cache,
+                                    redirect: input.redirect,
+                                    referrer: input.referrer,
+                                    integrity: input.integrity,
+                                });
+                            }
+
+                            if (!init.headers) init.headers = {};
+                            init.headers["X-Client-Version"] = clV === "min" ? "min" : clV;
+
+                            return origFetch(input, init);
+                        };
+
+                        // Patch XMLHttpRequest
+                        const origOpen = XMLHttpRequest.prototype.open;
+                        XMLHttpRequest.prototype.open = function(method, url, ...args) {
+                            try {
+                                url = proxify(url);
+                            } catch (e) {
+                                console.warn("XHR proxify failed", e);
+                            }
+                            return origOpen.call(this, method, url, ...args);
+                        };
+
+                        // Override location
+                        try {
+                            Object.defineProperty(window, "location", {
+                                configurable: true,
+                                enumerable: true,
+                                get() { return window.location; },
+                                set(url) { window.location.assign(proxify(url)); }
+                            });
+                        } catch(e) {}
+
+                    })();
+                    </script>
+                    `)
+            } else {
+                $("body").append(`
                 <script>
                 (function() {
                     const server = new URL(${JSON.stringify(serverUrl)});
                     const pageBase = new URL(${JSON.stringify(targetUrl)});
-                    const clV = ${JSON.stringify(clientVersion)};
 
                     function deproxify(u) {
-                        try {
-                            const abs = new URL(u, pageBase);
-                            if (abs.origin === server.origin && abs.pathname === server.pathname) {
-                                const inner = abs.searchParams.get("url");
-                                return inner || abs.href;
-                            }
-                            return abs.href;
-                        } catch(e) { return u; }
+                    try {
+                        const abs = new URL(u, pageBase);
+                        if (abs.origin === server.origin && abs.pathname === server.pathname) {
+                        const inner = abs.searchParams.get("url");
+                        return inner || abs.href;
+                        }
+                        return abs.href;
+                    } catch(e) { return u; }
                     }
 
+                    // Wrap URL for proxying
                     function proxify(u) {
-                        const resolved = new URL(deproxify(u), pageBase).href;
-                        const p = new URL(server.href);
-                        p.searchParams.set("url", resolved);
-                        return p.href;
+                    const resolved = new URL(deproxify(u), pageBase).href;
+                    const p = new URL(server.href);
+                    p.searchParams.set("url", resolved);
+                    return p.href;
                     }
 
                     // Patch fetch
                     const origFetch = window.fetch;
-                    window.fetch = function(input, init = {}) {
-                        if (typeof input === "string") {
-                            input = proxify(input);
-                        } else if (input instanceof Request) {
-                            input = new Request(proxify(input.url), {
-                                method: input.method,
-                                headers: input.headers,
-                                body: input.body,
-                                mode: input.mode,
-                                credentials: input.credentials,
-                                cache: input.cache,
-                                redirect: input.redirect,
-                                referrer: input.referrer,
-                                integrity: input.integrity,
-                            });
-                        }
-
-                        if (!init.headers) init.headers = {};
-                        init.headers["X-Client-Version"] = clV === "min" ? "min" : clV;
-
-                        return origFetch(input, init);
+                    window.fetch = function(input, init) {
+                    if (typeof input === "string") input = proxify(input);
+                    else if (input instanceof Request) {
+                        const newReq = new Request(proxify(input.url), {
+                        method: input.method,
+                        headers: input.headers,
+                        body: input.body,
+                        mode: input.mode,
+                        credentials: input.credentials,
+                        cache: input.cache,
+                        redirect: input.redirect,
+                        referrer: input.referrer,
+                        integrity: input.integrity,
+                        });
+                        input = newReq;
+                    }
+                    return origFetch(input, init);
                     };
 
                     // Patch XMLHttpRequest
                     const origOpen = XMLHttpRequest.prototype.open;
-                    XMLHttpRequest.prototype.open = function(method, url, ...args) {
-                        try {
-                            url = proxify(url);
-                        } catch (e) {
-                            console.warn("XHR proxify failed", e);
-                        }
-                        return origOpen.call(this, method, url, ...args);
+                    XMLHttpRequest.prototype.open = function(method, url) {
+                    arguments[1] = proxify(url);
+                    return origOpen.apply(this, arguments);
                     };
 
-                    // Override location
+                    // Patch WebSocket
+                    const OrigWebSocket = window.WebSocket;
+                    window.WebSocket = function(url, protocols) {
+                    return new OrigWebSocket(proxify(url), protocols);
+                    };
+                    window.WebSocket.prototype = OrigWebSocket.prototype;
+
+                    // Safe location overrides
                     try {
-                        Object.defineProperty(window, "location", {
-                            configurable: true,
-                            enumerable: true,
-                            get() { return window.location; },
-                            set(url) { window.location.assign(proxify(url)); }
-                        });
+                    Object.defineProperty(top, "location", {
+                        configurable: true,
+                        enumerable: true,
+                        get() { return top.location; },
+                        set(url) { top.location.href = proxify(url); }
+                    });
+                    } catch(e) {}
+
+                    try {
+                    Object.defineProperty(window, "location", {
+                        configurable: true,
+                        enumerable: true,
+                        get() { return window.location; },
+                        set(url) { window.location.assign(proxify(url)); }
+                    });
                     } catch(e) {}
 
                 })();
                 </script>
-                `)
-        } else {
-            $("body").append(`
-            <script>
-            (function() {
-                const server = new URL(${JSON.stringify(serverUrl)});
-                const pageBase = new URL(${JSON.stringify(targetUrl)});
+                `);
+            }
 
-                function deproxify(u) {
-                try {
-                    const abs = new URL(u, pageBase);
-                    if (abs.origin === server.origin && abs.pathname === server.pathname) {
-                    const inner = abs.searchParams.get("url");
-                    return inner || abs.href;
+            res.send($.html());
+        } else if (/\b(javascript|ecmascript|module)\b/i.test(contentType)) {
+            let body = await response.text();
+            
+            // Imports
+
+            res.send(patchImports(body, serverUrl, targetUrl));
+
+            function patchImports(code, serverUrl, targetUrl) {
+                const origin = new URL(targetUrl).origin;
+
+                code = code.replace(
+                    /\b(?:import|export)[\s\S]*?from\s+['"]([^'"]+)['"]/g,
+                    (match, path) => {
+                        if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
+                        const abs = new URL(path, origin).href;
+                        return match.replace(path, rewriteUrl(serverUrl, abs));
                     }
-                    return abs.href;
-                } catch(e) { return u; }
-                }
+                );
 
-                // Wrap URL for proxying
-                function proxify(u) {
-                const resolved = new URL(deproxify(u), pageBase).href;
-                const p = new URL(server.href);
-                p.searchParams.set("url", resolved);
-                return p.href;
-                }
+                // Dynamic imports
+                code = code.replace(
+                    /import\(['"]([^'"]+)['"]\)/g,
+                    (match, path) => {
+                        if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
+                        const abs = new URL(path, origin).href;
+                        return `import("${rewriteUrl(serverUrl, abs)}")`;
+                    }
+                );
 
-                // Patch fetch
-                const origFetch = window.fetch;
-                window.fetch = function(input, init) {
-                if (typeof input === "string") input = proxify(input);
-                else if (input instanceof Request) {
-                    const newReq = new Request(proxify(input.url), {
-                    method: input.method,
-                    headers: input.headers,
-                    body: input.body,
-                    mode: input.mode,
-                    credentials: input.credentials,
-                    cache: input.cache,
-                    redirect: input.redirect,
-                    referrer: input.referrer,
-                    integrity: input.integrity,
-                    });
-                    input = newReq;
-                }
-                return origFetch(input, init);
-                };
+                // WASM
+                code = code.replace(
+                    /module_or_path:\s*['"]([^'"]+)['"]/g,
+                    (match, path) => {
+                        if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
+                        const abs = new URL(path, origin).href;
+                        return `module_or_path: "${rewriteUrl(serverUrl, abs)}"`;
+                    }
+                );
 
-                // Patch XMLHttpRequest
-                const origOpen = XMLHttpRequest.prototype.open;
-                XMLHttpRequest.prototype.open = function(method, url) {
-                arguments[1] = proxify(url);
-                return origOpen.apply(this, arguments);
-                };
-
-                // Patch WebSocket
-                const OrigWebSocket = window.WebSocket;
-                window.WebSocket = function(url, protocols) {
-                return new OrigWebSocket(proxify(url), protocols);
-                };
-                window.WebSocket.prototype = OrigWebSocket.prototype;
-
-                // Safe location overrides
-                try {
-                Object.defineProperty(top, "location", {
-                    configurable: true,
-                    enumerable: true,
-                    get() { return top.location; },
-                    set(url) { top.location.href = proxify(url); }
-                });
-                } catch(e) {}
-
-                try {
-                Object.defineProperty(window, "location", {
-                    configurable: true,
-                    enumerable: true,
-                    get() { return window.location; },
-                    set(url) { window.location.assign(proxify(url)); }
-                });
-                } catch(e) {}
-
-            })();
-            </script>
-            `);
+                return code;
+            }
+        } else if (contentType.includes("text/css")) {
+            let body = await response.text();
+            body = body.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
+                let clean = url.trim();
+                if (clean.startsWith("data:")) return `url(${url})`;
+                return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
+            });
+            res.send(body);
+        } else if (contentType.includes("text/")) {
+            const body = await response.text();
+            res.send(body);
+        } else {
+            // Binary (images, PDFs, etc.)
+            const buffer = await response.arrayBuffer();
+            res.send(Buffer.from(buffer));
         }
+    } catch (err) {
+        console.error("Error fetching " + targetUrl + ": " + err)
 
-    res.send($.html());
-    } else if (contentType.includes("text/css")) {
-        let body = await response.text();
-        body = body.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
-            let clean = url.trim();
-            if (clean.startsWith("data:")) return `url(${url})`;
-            return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
-        });
-        res.send(body);
-    } else if (contentType.includes("text/")) {
-        const body = await response.text();
-        res.send(body);
-    } else {
-        // Binary (images, PDFs, etc.)
-        const buffer = await response.arrayBuffer();
-        res.send(Buffer.from(buffer));
-    }
-} catch (err) {
-    console.error("Error fetching " + targetUrl + ": " + err)
-
-    let failFetchErrorHtml = `
+        let failFetchErrorHtml = `
 <html lang="en">
     <head>
         <meta charset="UTF-8">
@@ -591,9 +632,9 @@ async function handleProxy(req, res, method) {
         <a href=${JSON.stringify(targetUrl)}>Reload</a>
     </body>
 </html>
-    `;
-    res.status(500).send(failFetchErrorHtml);
-  }
+        `;
+        res.status(500).send(failFetchErrorHtml);
+    }
 }
 
 function escapeHtml(str) {
