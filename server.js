@@ -3,6 +3,8 @@ import * as cheerio from "npm:cheerio";
 import { Buffer } from "node:buffer";
 import { rateLimit } from 'npm:express-rate-limit'
 import { CookieJar } from "npm:tough-cookie";
+import { init, parse } from 'npm:es-module-lexer';
+
 import fetchCookie from "npm:fetch-cookie";
 
 const disabled = Deno.env.get("disabled") || false;
@@ -167,42 +169,33 @@ function rewriteUrl(baseServerUrl, targetUrl) {
 
 // (JS imports)
 
+await init;
+
 function patchImports(code, serverUrl, targetUrl) {
-    const origin = new URL(targetUrl).origin;
 
-    // Static imports and exports
-    code = code.replace(
-        /\b(?:import|export)\s+(?:[\s\S]*?)\s+from\s+(['"])([^'"]+)\1/g,
-        (match, prefix, path) => {
-            if (path.startsWith("http") || path.startsWith("data:")) return match;
-            const abs = new URL(path, targetUrl).href;
-            return `${prefix}"${serverUrl}?url=${encodeURIComponent(abs)}"`;
+    const [imports] = parse(code);
+
+    let patchedCode = '';
+    let lastIndex = 0;
+
+    for (const imp of imports) {
+        const specifier = code.slice(imp.s, imp.e);
+        let replacement = specifier;
+
+        if (!specifier.startsWith('http') && !specifier.startsWith('data:')) {
+            const abs = new URL(specifier, targetUrl).href;
+            replacement = `${serverUrl}?url=${encodeURIComponent(abs)}`;
         }
-    );
 
-    // Dynamic imports
-    code = code.replace(
-        /import\(\s*(['"])([^'"]+)\1\s*\)/g,
-        (match, path) => {
-            if (path.startsWith("http") || path.startsWith("data:")) return match;
-            const abs = new URL(path, targetUrl).href;
-            return `import("${serverUrl}?url=${encodeURIComponent(abs)}")`;
-        }
-    );
+        patchedCode += code.slice(lastIndex, imp.s) + replacement;
+        lastIndex = imp.e;
+    }
 
-    // WASM paths
-    code = code.replace(
-        /module_or_path:\s*(['"])([^'"]+)\1/g,
-        (match, path) => {
-            if (path.startsWith("http") || path.startsWith("data:")) return match;
-            const abs = new URL(path, targetUrl).href;
-            return `module_or_path: "${serverUrl}?url=${encodeURIComponent(abs)}"`;
-        }
-    );
+    // Append remaining code
+    patchedCode += code.slice(lastIndex);
 
-    return code;
+    return patchedCode;
 }
-
 
 async function handleProxy(req, res, method) {
   if (disabled) return res.status(403).send("The server is manually disabled.");
