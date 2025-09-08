@@ -170,34 +170,26 @@ function rewriteUrl(baseServerUrl, targetUrl) {
 function patchImports(code, serverUrl, targetUrl) {
     const origin = new URL(targetUrl).origin;
 
-    code = code.replace(
-        /\b(?:import|export)[\s\S]*?from\s+['"]([^'"]+)['"]/g,
-        (match, path) => {
-            if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
-            const abs = new URL(path, origin).href;
-            return match.replace(path, rewriteUrl(serverUrl, abs));
-        }
-    );
+    // Static imports
+    code = code.replace(/\b(?:import|export)\s.*?from\s+['"]([^'"]+)['"]/g, (match, path) => {
+        if (path.startsWith("http") || path.startsWith("data:")) return match;
+        const abs = new URL(path, origin).href;
+        return `from "${serverUrl}/proxy?url=${encodeURIComponent(abs)}"`;
+    });
 
     // Dynamic imports
-    code = code.replace(
-        /import\(\s*['"]([^'"]+)['"]\s*\)/g,
-        (match, path) => {
-            if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
-            const abs = new URL(path, origin).href;
-            return `import("${rewriteUrl(serverUrl, abs)}")`;
-        }
-    );
+    code = code.replace(/import\(['"]([^'"]+)['"]\)/g, (match, path) => {
+        if (path.startsWith("http") || path.startsWith("data:")) return match;
+        const abs = new URL(path, origin).href;
+        return `import("${serverUrl}/proxy?url=${encodeURIComponent(abs)}")`;
+    });
 
-    // WASM
-    code = code.replace(
-        /module_or_path:\s*['"]([^'"]+)['"]/g,
-        (match, path) => {
-            if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("//")) return match;
-            const abs = new URL(path, origin).href;
-            return `module_or_path: "${rewriteUrl(serverUrl, abs)}"`;
-        }
-    );
+    // WASM paths
+    code = code.replace(/module_or_path:\s*['"]([^'"]+)['"]/g, (match, path) => {
+        if (path.startsWith("http") || path.startsWith("data:")) return match;
+        const abs = new URL(path, origin).href;
+        return `module_or_path: "${serverUrl}/proxy?url=${encodeURIComponent(abs)}"`;
+    });
 
     return code;
 }
