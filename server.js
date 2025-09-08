@@ -170,13 +170,13 @@ function rewriteUrl(baseServerUrl, targetUrl) {
 function patchImports(code, serverUrl, targetUrl) {
     const origin = new URL(targetUrl).origin;
 
-    // Static imports / exports
+    // Static imports and exports
     code = code.replace(
-        /(\b(?:import|export)\s.*?from\s+)['"]([^'"]+)['"]/g,
+        /(\b(?:import|export)\s*.*?from\s*)['"]([^'"]+)['"]/g,
         (match, prefix, path) => {
             if (path.startsWith("http") || path.startsWith("data:")) return match;
             const abs = new URL(path, origin).href;
-            return `${prefix}"${serverUrl}/proxy?url=${encodeURIComponent(abs)}"`;
+            return `${prefix}"${serverUrl}?url=${encodeURIComponent(abs)}"`;
         }
     );
 
@@ -186,7 +186,7 @@ function patchImports(code, serverUrl, targetUrl) {
         (match, path) => {
             if (path.startsWith("http") || path.startsWith("data:")) return match;
             const abs = new URL(path, origin).href;
-            return `import("${serverUrl}/proxy?url=${encodeURIComponent(abs)}")`;
+            return `import("${serverUrl}?url=${encodeURIComponent(abs)}")`;
         }
     );
 
@@ -196,12 +196,13 @@ function patchImports(code, serverUrl, targetUrl) {
         (match, path) => {
             if (path.startsWith("http") || path.startsWith("data:")) return match;
             const abs = new URL(path, origin).href;
-            return `module_or_path: "${serverUrl}/proxy?url=${encodeURIComponent(abs)}"`;
+            return `module_or_path: "${serverUrl}?url=${encodeURIComponent(abs)}"`;
         }
     );
 
     return code;
 }
+
 
 async function handleProxy(req, res, method) {
   if (disabled) return res.status(403).send("The server is manually disabled.");
