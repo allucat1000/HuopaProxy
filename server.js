@@ -168,38 +168,49 @@ function rewriteUrl(baseServerUrl, targetUrl) {
 }
 
 // (JS imports)
-
 await init;
 
 function patchImports(code, serverUrl, targetUrl) {
     const [imports] = parse(code);
-
-    let patchedCode = '';
+    let patched = '';
     let lastIndex = 0;
 
     for (const imp of imports) {
         const specifier = code.slice(imp.s, imp.e);
 
-        const isDynamic = code.slice(imp.s - 7, imp.s).trim().startsWith('import(');
-
-        let replacement = specifier;
-
-        if (!specifier.startsWith('http') && !specifier.startsWith('data:')) {
-            const abs = new URL(specifier, targetUrl).href;
-            if (isDynamic) {
-                replacement = `"${serverUrl}?url=${encodeURIComponent(abs)}"`; 
-            } else {
-                replacement = `${serverUrl}?url=${encodeURIComponent(abs)}`;
-            }
+        let noQuotes = specifier;
+        if ((specifier.startsWith('"') && specifier.endsWith('"')) ||
+            (specifier.startsWith("'") && specifier.endsWith("'"))) {
+            noQuotes = specifier.slice(1, -1);
         }
 
-        patchedCode += code.slice(lastIndex, imp.s) + replacement;
+        if (
+            noQuotes === 'import.meta.url' ||
+            noQuotes === 'import.meta' ||
+            noQuotes.startsWith('data:') ||
+            noQuotes.startsWith('blob:') ||
+            noQuotes.startsWith('javascript:')
+        ) {
+            patched += code.slice(lastIndex, imp.e);
+            lastIndex = imp.e;
+            continue;
+        }
+
+        const abs = new URL(noQuotes, targetUrl).href;
+        const proxied = `${serverUrl}?url=${encodeURIComponent(abs)}`;
+
+        const dynamic = code.slice(imp.s - 7, imp.s).trim().startsWith('import(');
+        const replacement = dynamic ? JSON.stringify(proxied) : proxied;
+
+        patched += code.slice(lastIndex, imp.s) + replacement;
         lastIndex = imp.e;
     }
 
-    patchedCode += code.slice(lastIndex);
-    return patchedCode;
+    patched += code.slice(lastIndex);
+    return patched;
 }
+
+
 
 async function handleProxy(req, res, method) {
   if (disabled) return res.status(403).send("The server is manually disabled.");
