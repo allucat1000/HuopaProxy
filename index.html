@@ -202,6 +202,7 @@
 <script type="module">
     let devtoolsOpen = false;
     let siteLogs = {}
+    let urls = {};
     const url = new URL(window.location.href);
     const kiosk = url.searchParams.get("kiosk");
     let selectedTab = 0;
@@ -240,10 +241,12 @@
         if (tab) tab.remove();
         if (tabMark) tabMark.remove();
         delete siteLogs[id];
+        delete urls[id];
 
         const remainingTabs = document.getElementById("innerTabs").children;
 
         if (remainingTabs.length === 0) {
+            urls = {};
             selectedTab = null;
             newTabId = 0;
             siteLogs = {};
@@ -590,6 +593,8 @@
         newFrame.id = id;
         document.body.append(newFrame);
 
+        urls[id] = targetUrl;
+
         openTab(id);
         loadPage(targetUrl);
     }
@@ -610,7 +615,7 @@
         const newTabMark = document.getElementById(`tab${selectedTab}`);
         if (newTabMark) newTabMark.classList.add("selectedTab");
         newTab.style.display = "block";
-        if (newTabMark) searchInput.value = newTabMark.children[0].textContent;
+        if (newTabMark) searchInput.value = urls[id];
     }
 
 
@@ -741,6 +746,7 @@
 
         win.__proto__.import = async function (path) {
             if (typeof path === "string") {
+                console.log("hi")
                 if (!path.startsWith("http") && !path.startsWith("data:") && !path.startsWith("//")) {
                     const abs = new URL(path, win.location.href).href;
                     path = rewriteUrl(serverUrl, abs);
@@ -948,6 +954,7 @@
         const raw = await fetch(server.href + "?url=" + encodeURIComponent(remoteUrl), {
             credentials: 'include'
         });
+        urls[selectedTab] = remoteUrl;
         const html = await raw.text();
         renderIntoIframe(html, remoteUrl);
     }
