@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Location thimgy</title>
+</head>
+<body>
+  <h1>Location test stuff</h1>
+  <div id="output"></div>
+  <script>
+    function log(name, value) {
+      const out = document.getElementById("output");
+      out.innerHTML += `<pre><b>${name}:</b> ${JSON.stringify(value)}</pre>`;
+    }
+
+    log("location.href", location.href);
+    log("location.pathname", location.pathname);
+
+    log("window.location.href", window.location.href);
+
+    const { pathname, host } = location;
+    log("destructured pathname", pathname);
+    log("destructured host", host);
+
+    log("window.location === location", window.location === location);
+
+    try {
+      location.pathname = "/spoofed";
+      log("assigned location.pathname", location.pathname);
+    } catch (e) {
+      log("assignment error", e.message);
+    }
+
+    function checkLoc() {
+      return location.protocol + "//" + location.host + location.pathname;
+    }
+    log("function result", checkLoc());
+
+    const e = { location: { key: "abc", pathname: "/real" } };
+    log("object.location.pathname", e.location.pathname);
+
+    log("`${location}`", `${location}`);
+  </script>
+</body>
+</html>
