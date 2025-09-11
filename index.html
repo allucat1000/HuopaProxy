@@ -746,7 +746,6 @@
 
         win.__proto__.import = async function (path) {
             if (typeof path === "string") {
-                console.log("hi")
                 if (!path.startsWith("http") && !path.startsWith("data:") && !path.startsWith("//")) {
                     const abs = new URL(path, win.location.href).href;
                     path = rewriteUrl(serverUrl, abs);
@@ -803,6 +802,41 @@
                 }
             };
         });
+        // Patch fetch
+        const origFetch = win.fetch;
+        win.fetch = function(input, init) {
+        if (typeof input === "string") input = rewriteUrl(serverUrl, input);
+        else if (input instanceof Request) {
+            const newReq = new Request(rewriteUrl(serverUrl, input.url), {
+            method: input.method,
+            headers: input.headers,
+            body: input.body,
+            mode: input.mode,
+            credentials: input.credentials,
+            cache: input.cache,
+            redirect: input.redirect,
+            referrer: input.referrer,
+            integrity: input.integrity,
+            });
+            input = newReq;
+        }
+        try {
+            return origFetch(input, init);
+        } catch (e) {
+            siteLogs[id].push(["error", e.message + " @ " + e.filename.split("/").pop() + ":" + e.lineno]);
+        }
+        };
+
+        // Patch XMLHttpRequest
+        const origOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            arguments[1] = rewriteUrl(serverUrl, url);
+            try {
+                return origOpen.apply(this, arguments);
+            } catch (e) {
+                siteLogs[id].push(["error", e.message + " @ " + e.filename.split("/").pop() + ":" + e.lineno]);
+            }
+        };
 
 
         // Meta refresh
