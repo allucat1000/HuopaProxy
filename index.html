@@ -511,8 +511,10 @@
                 }
             }
             if (root) renderTo.append(childrenRend);
-            for (const child of el.children) {
-                renderElementTree(child, childrenRend, false, depth + 10);
+            if (el?.children) {
+                for (const child of el.children) {
+                    renderElementTree(child, childrenRend, false, depth + 10);
+                }
             }
         }
         evalInput.addEventListener("keydown", devtoolsInputHandler) 
