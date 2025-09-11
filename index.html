@@ -1003,7 +1003,7 @@
             remoteUrl = "http://" + remoteUrl;
         }
         if (search) {
-            if (!isValidURL(remoteUrl) && !remoteUrl.includes(" ") && !remoteUrl.includes(".") ) {
+            if (!isValidURL(remoteUrl) || remoteUrl.includes(" ") || !remoteUrl.includes(".") ) {
                 remoteUrl = "https://startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
             }
         }
