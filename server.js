@@ -1,18 +1,18 @@
-import express from "express";
-import * as cheerio from "cheerio";
+import express from "npm:express";
+import * as cheerio from "npm:cheerio";
 import { Buffer } from "node:buffer";
-import rateLimit from 'express-rate-limit';
-import { CookieJar } from "tough-cookie";
-import { init, parse } from "es-module-lexer";
-import process from "node:process"
+import rateLimit from 'npm:express-rate-limit';
+import { CookieJar } from "npm:tough-cookie";
+import { init, parse } from "npm:es-module-lexer";
+import fetchCookie from "npm:fetch-cookie";
 
-import fetchCookie from "fetch-cookie";
+import process from "node:process"
 
 const disabled = Deno.env.get("disabled") || false;
 const blockedIps = (Deno.env.get("blockedIps") || "").split(",");
 const noRatelimitIps = (Deno.env.get("noRatelimitIps") || "").split(",");
 
-const serverUrl = "http:/localhost:3000/proxy"; // https://allucat1000-huopaproxy-29.deno.dev/proxy
+const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
 const app = express();
 
 const sessions = new Map();
