@@ -12,7 +12,7 @@ const disabled = Deno.env.get("disabled") || false;
 const blockedIps = (Deno.env.get("blockedIps") || "").split(",");
 const noRatelimitIps = (Deno.env.get("noRatelimitIps") || "").split(",");
 
-const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
+const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy"
 const app = express();
 
 const sessions = new Map();
@@ -379,14 +379,36 @@ async function handleProxy(req, res, method) {
                 }
             });
 
-            // JS imports in script tags
+            // JS imports and location in script tags
 
             $("script").each((_, el) => {
                 const code = $(el).html();
                 if (code) {
-                    $(el).html(patchImports(code, serverUrl, targetUrl));
+                    let modCode = patchImports(code, serverUrl, targetUrl)
+                    modCode = modCode
+                        .replace(/\b(?:window\.)?location\b/g, "__huopaProxiedLocation")
+                    $(el).html(modCode);
                 }
             });
+            const url = new URL(targetUrl);
+            $("body").prepend(`
+                <script>
+                const __huopaProxiedLocation = {
+                    href: ${JSON.stringify(url.href)},
+                    protocol: ${JSON.stringify(url.protocol)},
+                    host: ${JSON.stringify(url.host)},
+                    hostname: ${JSON.stringify(url.hostname)},
+                    port: ${JSON.stringify(url.port)},
+                    pathname: ${JSON.stringify(url.pathname)},
+                    search: "",
+                    hash: "",
+                    toString() {
+                        return this.href;
+                    }
+                };
+                window["__huopaProxiedLocation"] = __huopaProxiedLocation;
+                </script>
+            `)
 
             $("[style]").each((_, el) => {
                 let css = $(el).attr("style");
@@ -474,9 +496,12 @@ async function handleProxy(req, res, method) {
         } else if (/\b(javascript|ecmascript|module)\b/i.test(contentType)) {
             const body = await response.text();
             
-            // Imports
-
-            res.send(patchImports(body, serverUrl, targetUrl));
+            // Imports and location
+            let code = patchImports(body, serverUrl, targetUrl)
+            code = code
+                .replace(/\bwindow\.location\b/g, "__huopaProxiedLocation")
+                .replace(/(?<!\.)\blocation\b/g, "__huopaProxiedLocation");
+            res.send(code);
 
         } else if (contentType.includes("text/css")) {
             let body = await response.text();
