@@ -324,6 +324,7 @@
         const evalInput = document.getElementById("devtoolsConsoleEval");
         devtoolsInputHandler = (e) => {
             if (e.key == "Enter") {
+                if (!evalInput.value.trim()) return;
                 e.preventDefault();
                 const val = evalInput.value;
                 evalInput.value = "";
@@ -554,9 +555,11 @@
                     `;
                     logDiv.textContent = log[1];
                     if (log[0] === "error") logDiv.style.backgroundColor = "rgb(200, 0, 0)";
+                    if (log[0] == "input") logDiv.style.backgroundColor = "rgba(0, 0, 0, 0)";
                     if (log[0] === "warn")  logDiv.style.backgroundColor = "rgb(160, 200, 0)";
                     consoleLogs.append(logDiv);
                 }
+                consoleLogs.scrollTop = consoleLogs.scrollHeight;
             }
             await new Promise(resolve => setTimeout(resolve, 250));
             if (!devtoolsOpen) return;
@@ -674,7 +677,7 @@
         for (const level of levels) {
             const orig = win.console[level];
             win.console[level] = (...args) => {
-                siteLogs[id].push([level, args.map(a => String(a)).join(" ") + " @ <anonymous:1>"]);
+                siteLogs[id].push([level, args.map(a => String(a)).join(" ")]);
             };
         }
 
@@ -726,14 +729,7 @@
         siteLogs[selectedTab] = []
         window.siteLogs = siteLogs
         hookConsole(frame, selectedTab);
-
-        // Safe nav patches
-        win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; };
-        try {
-            win.location.assign = (u) => loadPage(deproxify(u, remoteUrl));
-            win.location.replace = (u) => loadPage(deproxify(u, remoteUrl));
-            win.location.reload  = ()  => loadPage(remoteUrl);
-        } catch {}
+        
 
         // SRI
 
@@ -805,33 +801,33 @@
             };
         });
         // Patch fetch
-    const origFetch = win.fetch;
-    win.fetch = function (input, init) {
-        if (typeof input === "string") {
-            input = rewriteUrl(serverUrl, input);
-        } else if (input instanceof Request) {
-            const newReq = new Request(rewriteUrl(serverUrl, input.url), {
-                method: input.method,
-                headers: input.headers,
-                body: input.body,
-                mode: input.mode,
-                credentials: input.credentials,
-                cache: input.cache,
-                redirect: input.redirect,
-                referrer: input.referrer,
-                integrity: input.integrity,
-            });
-            input = newReq;
-        }
+        const origFetch = win.fetch;
+        win.fetch = function (input, init) {
+            if (typeof input === "string") {
+                input = rewriteUrl(serverUrl, input);
+            } else if (input instanceof Request) {
+                const newReq = new Request(rewriteUrl(serverUrl, input.url), {
+                    method: input.method,
+                    headers: input.headers,
+                    body: input.body,
+                    mode: input.mode,
+                    credentials: input.credentials,
+                    cache: input.cache,
+                    redirect: input.redirect,
+                    referrer: input.referrer,
+                    integrity: input.integrity,
+                });
+                input = newReq;
+            }
 
-        return origFetch(input, init).catch(e => {
-            siteLogs[id].push([
-                "error",
-                e?.message || String(e),
-            ]);
-            throw e;
-        });
-    };
+            return origFetch(input, init).catch(e => {
+                siteLogs[id].push([
+                    "error",
+                    e?.message || String(e),
+                ]);
+                throw e;
+            });
+        };
 
         // Patch XMLHttpRequest
         const origOpen = XMLHttpRequest.prototype.open;
@@ -870,6 +866,38 @@
             setTimeout(() => loadPage(next), delay);
             }
         });
+
+        // Location stuff
+
+        win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; }
+
+        function spoofLocation(win, remoteUrl) {
+            const url = new URL(remoteUrl);
+
+            const location = {
+                get href() { return url.href },
+                get host() { return url.host },
+                get hostname() { return url.hostname },
+                get pathname() { return url.pathname },
+                get port() { return url.port },
+                get protocol() { return url.protocol },
+                get search() { return url.search },
+                get hash() { return url.hash },
+
+                assign(u) {loadPage(deproxify(u, remoteUrl))},
+                replace(u) {loadPage(deproxify(u, remoteUrl))},
+                reload() {loadPage(remoteUrl)}}
+
+            try {
+                win.__defineGetter__("location", () => location);
+            } catch (e) {
+                console.warn("Could not spoof location:", e);
+            }
+        }
+
+        spoofLocation(win, remoteUrl)
+
+        // Stuff
 
         const noop = () => {};
 
