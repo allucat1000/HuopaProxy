@@ -871,32 +871,6 @@
 
         win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; }
 
-        function spoofLocation(win, remoteUrl) {
-            const url = new URL(remoteUrl);
-
-            const location = {
-                get href() { return url.href },
-                get host() { return url.host },
-                get hostname() { return url.hostname },
-                get pathname() { return url.pathname },
-                get port() { return url.port },
-                get protocol() { return url.protocol },
-                get search() { return url.search },
-                get hash() { return url.hash },
-
-                assign(u) {loadPage(deproxify(u, remoteUrl))},
-                replace(u) {loadPage(deproxify(u, remoteUrl))},
-                reload() {loadPage(remoteUrl)}}
-
-            try {
-                win.__defineGetter__("location", () => location);
-            } catch (e) {
-                console.warn("Could not spoof location:", e);
-            }
-        }
-
-        spoofLocation(win, remoteUrl)
-
         // Stuff
 
         const noop = () => {};
