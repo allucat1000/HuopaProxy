@@ -1,17 +1,18 @@
-import express from "npm:express";
-import * as cheerio from "npm:cheerio";
+import express from "express";
+import * as cheerio from "cheerio";
 import { Buffer } from "node:buffer";
-import rateLimit from 'npm:express-rate-limit';
-import { CookieJar } from "npm:tough-cookie";
-import { init, parse } from 'npm:es-module-lexer';
+import rateLimit from 'express-rate-limit';
+import { CookieJar } from "tough-cookie";
+import { init, parse } from "es-module-lexer";
+import process from "node:process"
 
-import fetchCookie from "npm:fetch-cookie";
+import fetchCookie from "fetch-cookie";
 
 const disabled = Deno.env.get("disabled") || false;
 const blockedIps = (Deno.env.get("blockedIps") || "").split(",");
 const noRatelimitIps = (Deno.env.get("noRatelimitIps") || "").split(",");
 
-const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
+const serverUrl = "http:/localhost:3000/proxy"; // https://allucat1000-huopaproxy-29.deno.dev/proxy
 const app = express();
 
 const sessions = new Map();
@@ -34,7 +35,7 @@ async function loadSessions() {
 
 function getOrCreateSession(req) {
     // Check if cookie exists already
-    let ip = req.ip;
+    const ip = req.ip;
 
     if (!sessions.has(ip)) {
         sessions.set(ip, new CookieJar());
@@ -48,7 +49,7 @@ process.on("SIGINT", () => {
   process.exit();
 });
 
-let internalErrorHtml = `
+const internalErrorHtml = `
 <!DOCTYPE html>
 <html lang="en">
     <head>
@@ -98,7 +99,7 @@ let internalErrorHtml = `
 
 
 const limiter = rateLimit({
-    skip: (req, res) => noRatelimitIps.includes(req.ip),
+    skip: (req) => noRatelimitIps.includes(req.ip),
 	windowMs: 60 * 1000,
 	max: 500,
 	standardHeaders: 'draft-8',
@@ -143,7 +144,7 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
-app.use((err, req, res, next) => {
+app.use((err, _req, res, _next) => {
     if (err) {
       console.error("Internal error:", err);
       res.status(500).send(internalErrorHtml);
@@ -215,10 +216,9 @@ function patchImports(code, serverUrl, targetUrl) {
 async function handleProxy(req, res, method) {
   if (disabled) return res.status(403).send("The server is manually disabled.");
   if (blockedIps.includes(req.ip)) return res.status(403).send("Your IP address has been blocked.");
-  const clientVersion = req.headers["x-client-version"] || "full";
   const targetUrl = req.query.url;
 
-  let missingUrlHtml = `
+  const missingUrlHtml = `
 <html lang="en">
     <head>
         <meta charset="UTF-8">
@@ -316,35 +316,28 @@ async function handleProxy(req, res, method) {
         if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location");
         if (location) {
-            if (clientVersion === "min") {
-                const resolved = new URL(location, targetUrl).href;
-
-                res.json({ redirect: resolved });
-                return;
-            } else {
-                const resolved = new URL(location, targetUrl).href;
-                res.send(`
-                <!DOCTYPE html>
-                <html><head><meta charset="utf-8"></head>
-                <body>
-                    <script>
-                    if (window.parent && window.parent.loadPage) {
-                        window.parent.loadPage(${JSON.stringify(resolved)});
-                    } else {
-                        document.write("Redirect failed: parent loader not found");
-                    }
-                    </script>
-                </body></html>
-                `);
-                return;
-            }
+            const resolved = new URL(location, targetUrl).href;
+            res.send(`
+            <!DOCTYPE html>
+            <html><head><meta charset="utf-8"></head>
+            <body>
+                <script>
+                if (window.parent && window.parent.loadPage) {
+                    window.parent.loadPage(${JSON.stringify(resolved)});
+                } else {
+                    document.write("Redirect failed: parent loader not found");
+                }
+                </script>
+            </body></html>
+            `);
+            return;
         }
         }
 
-        let contentType = response.headers.get("content-type") || "";
+        const contentType = response.headers.get("content-type") || "";
         res.set("content-type", contentType);
         if (contentType.includes("text/html")) {
-            let body = await response.text();
+            const body = await response.text();
             const $ = cheerio.load(body);
             const pageOrigin = new URL(targetUrl).origin;
             const baseTag = `<base href="${pageOrigin}/">`;
@@ -368,7 +361,7 @@ async function handleProxy(req, res, method) {
 
             for (const [tag, attr] of Object.entries(attrMap)) {
                 $(tag).each((_, el) => {
-                let val = $(el).attr(attr);
+                const val = $(el).attr(attr);
                 if (val && !val.startsWith("data:") && !val.startsWith("javascript:")) {
                     $(el).attr(attr, rewriteUrl(serverUrl, new URL(val, targetUrl).href));
                 }
@@ -377,8 +370,8 @@ async function handleProxy(req, res, method) {
             $("style").each((_, el) => {
                 let css = $(el).html();
                 if (css) {
-                    css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
-                        let clean = url.trim();
+                    css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, _quote, url) => {
+                    const clean = url.trim();
                         if (clean.startsWith("data:")) return `url(${url})`;
                         return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
                     });
@@ -398,8 +391,8 @@ async function handleProxy(req, res, method) {
             $("[style]").each((_, el) => {
                 let css = $(el).attr("style");
                 if (css) {
-                    css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
-                        let clean = url.trim();
+                    css = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, _quote, url) => {
+                        const clean = url.trim();
                         if (clean.startsWith("data:")) return `url(${url})`;
                         return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
                     });
@@ -409,180 +402,77 @@ async function handleProxy(req, res, method) {
 
 
             $("img, source").each((_, el) => {
-                let srcset = $(el).attr("srcset");
+                const srcset = $(el).attr("srcset");
                 if (srcset) {
-                let rewritten = srcset
+                const rewritten = srcset
                     .split(",")
                     .map(entry => {
-                    let [url, size] = entry.trim().split(/\s+/, 2);
+                    const [url, size] = entry.trim().split(/\s+/, 2);
                     return rewriteUrl(serverUrl, url) + (size ? " " + size : "");
                     })
                     .join(", ");
                 $(el).attr("srcset", rewritten);
                 }
             });
-            if (clientVersion == "min") {
-                $("body").append(`
-                    <script>
-                    (function() {
-                        const server = new URL(${JSON.stringify(serverUrl)});
-                        const pageBase = new URL(${JSON.stringify(targetUrl)});
-                        const clV = ${JSON.stringify(clientVersion)};
+        
+            $("body").append(`
+            <script>
+            (function() {
+                const server = new URL(${JSON.stringify(serverUrl)});
+                const pageBase = new URL(${JSON.stringify(targetUrl)});
 
-                        function deproxify(u) {
-                            try {
-                                const abs = new URL(u, pageBase);
-                                if (abs.origin === server.origin && abs.pathname === server.pathname) {
-                                    const inner = abs.searchParams.get("url");
-                                    return inner || abs.href;
-                                }
-                                return abs.href;
-                            } catch(e) { return u; }
-                        }
-
-                        function proxify(u) {
-                            const resolved = new URL(deproxify(u), pageBase).href;
-                            const p = new URL(server.href);
-                            p.searchParams.set("url", resolved);
-                            return p.href;
-                        }
-
-                        // Patch fetch
-                        const origFetch = window.fetch;
-                        window.fetch = function(input, init = {}) {
-                            if (typeof input === "string") {
-                                input = proxify(input);
-                            } else if (input instanceof Request) {
-                                input = new Request(proxify(input.url), {
-                                    method: input.method,
-                                    headers: input.headers,
-                                    body: input.body,
-                                    mode: input.mode,
-                                    credentials: input.credentials,
-                                    cache: input.cache,
-                                    redirect: input.redirect,
-                                    referrer: input.referrer,
-                                    integrity: input.integrity,
-                                });
-                            }
-
-                            if (!init.headers) init.headers = {};
-                            init.headers["X-Client-Version"] = clV === "min" ? "min" : clV;
-
-                            return origFetch(input, init);
-                        };
-
-                        // Patch XMLHttpRequest
-                        const origOpen = XMLHttpRequest.prototype.open;
-                        XMLHttpRequest.prototype.open = function(method, url, ...args) {
-                            try {
-                                url = proxify(url);
-                            } catch (e) {
-                                console.warn("XHR proxify failed", e);
-                            }
-                            return origOpen.call(this, method, url, ...args);
-                        };
-
-                        // Override location
-                        try {
-                            Object.defineProperty(window, "location", {
-                                configurable: true,
-                                enumerable: true,
-                                get() { return window.location; },
-                                set(url) { window.location.assign(proxify(url)); }
-                            });
-                        } catch(e) {}
-
-                    })();
-                    </script>
-                    `)
-            } else {
-                $("body").append(`
-                <script>
-                (function() {
-                    const server = new URL(${JSON.stringify(serverUrl)});
-                    const pageBase = new URL(${JSON.stringify(targetUrl)});
-
-                    function deproxify(u) {
-                    try {
-                        const abs = new URL(u, pageBase);
-                        if (abs.origin === server.origin && abs.pathname === server.pathname) {
-                        const inner = abs.searchParams.get("url");
-                        return inner || abs.href;
-                        }
-                        return abs.href;
-                    } catch(e) { return u; }
+                function deproxify(u) {
+                try {
+                    const abs = new URL(u, pageBase);
+                    if (abs.origin === server.origin && abs.pathname === server.pathname) {
+                    const inner = abs.searchParams.get("url");
+                    return inner || abs.href;
                     }
+                    return abs.href;
+                } catch(e) { return u; }
+                }
 
-                    // Wrap URL for proxying
-                    function proxify(u) {
-                        const resolved = new URL(deproxify(u), pageBase).href;
-                        if (resolved.startsWith("ws:") || 
-                            resolved.startsWith("wss:") || 
-                            resolved.startsWith("data:") || 
-                            resolved.startsWith("javascript:")) {
-                            return resolved;
-                        }
-                        const p = new URL(server.href);
-                        p.searchParams.set("url", resolved);
-                        return p.href;
+                // Wrap URL for proxying
+                function proxify(u) {
+                    const resolved = new URL(deproxify(u), pageBase).href;
+                    if (resolved.startsWith("ws:") || 
+                        resolved.startsWith("wss:") || 
+                        resolved.startsWith("data:") || 
+                        resolved.startsWith("javascript:")) {
+                        return resolved;
                     }
+                    const p = new URL(server.href);
+                    p.searchParams.set("url", resolved);
+                    return p.href;
+                }
 
-                    // Patch fetch
-                    const origFetch = window.fetch;
-                    window.fetch = function(input, init) {
-                    if (typeof input === "string") input = proxify(input);
-                    else if (input instanceof Request) {
-                        const newReq = new Request(proxify(input.url), {
-                        method: input.method,
-                        headers: input.headers,
-                        body: input.body,
-                        mode: input.mode,
-                        credentials: input.credentials,
-                        cache: input.cache,
-                        redirect: input.redirect,
-                        referrer: input.referrer,
-                        integrity: input.integrity,
-                        });
-                        input = newReq;
-                    }
-                    return origFetch(input, init);
-                    };
+                // Safe location overrides
+                try {
+                Object.defineProperty(top, "location", {
+                    configurable: true,
+                    enumerable: true,
+                    get() { return top.location; },
+                    set(url) { top.location.href = proxify(url); }
+                });
+                } catch(e) {}
 
-                    // Patch XMLHttpRequest
-                    const origOpen = XMLHttpRequest.prototype.open;
-                    XMLHttpRequest.prototype.open = function(method, url) {
-                    arguments[1] = proxify(url);
-                    return origOpen.apply(this, arguments);
-                    };
+                try {
+                Object.defineProperty(window, "location", {
+                    configurable: true,
+                    enumerable: true,
+                    get() { return window.location; },
+                    set(url) { window.location.assign(proxify(url)); }
+                });
+                } catch(e) {}
 
-                    // Safe location overrides
-                    try {
-                    Object.defineProperty(top, "location", {
-                        configurable: true,
-                        enumerable: true,
-                        get() { return top.location; },
-                        set(url) { top.location.href = proxify(url); }
-                    });
-                    } catch(e) {}
-
-                    try {
-                    Object.defineProperty(window, "location", {
-                        configurable: true,
-                        enumerable: true,
-                        get() { return window.location; },
-                        set(url) { window.location.assign(proxify(url)); }
-                    });
-                    } catch(e) {}
-
-                })();
-                </script>
-                `);
-            }
+            })();
+            </script>
+            `);
+        
 
             res.send($.html());
         } else if (/\b(javascript|ecmascript|module)\b/i.test(contentType)) {
-            let body = await response.text();
+            const body = await response.text();
             
             // Imports
 
@@ -590,8 +480,8 @@ async function handleProxy(req, res, method) {
 
         } else if (contentType.includes("text/css")) {
             let body = await response.text();
-            body = body.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, quote, url) => {
-                let clean = url.trim();
+            body = body.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, _quote, url) => {
+                const clean = url.trim();
                 if (clean.startsWith("data:")) return `url(${url})`;
                 return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
             });
@@ -607,7 +497,7 @@ async function handleProxy(req, res, method) {
     } catch (err) {
         console.error("Error fetching " + targetUrl + ": " + err)
 
-        let failFetchErrorHtml = `
+        const failFetchErrorHtml = `
 <html lang="en">
     <head>
         <meta charset="UTF-8">
@@ -667,8 +557,8 @@ function escapeHtml(str) {
 
 }
 
-app.use((req, res, next) => {
-  let data = [];
+app.use((req, _res, next) => {
+  const data = [];
   req.on("data", chunk => data.push(chunk));
   req.on("end", () => {
     req.bodyRaw = Buffer.concat(data);
