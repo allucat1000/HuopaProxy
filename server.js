@@ -232,7 +232,7 @@ function replaceLocation(code, targetUrl) {
                 node.property?.type === "Identifier"
             ) {
                 const parent = ancestors[ancestors.length - 2];
-				console.log(`parenttype: ${parent.type}, parentleft: ${parent.left}, parentagrument: ${parent.argument}`)
+				console.log(`parenttype: ${parent?.type}, parentleft: ${parent?.left}, parentagrument: ${parent?.argument}`)
                 const isLHS =
                     (parent.type === "AssignmentExpression" && parent.left === node) ||
                     (parent.type === "UpdateExpression" && parent.argument === node);
