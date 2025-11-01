@@ -216,7 +216,6 @@ function patchImports(code, serverUrl, targetUrl) {
 // Window location stuff
 
 function replaceLocation(code, targetUrl) {
-	console.log("h");
     const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "module" });
     const replacements = [];
 
@@ -224,7 +223,6 @@ function replaceLocation(code, targetUrl) {
 
     walk.ancestor(ast, {
         MemberExpression(node, ancestors) {
-			console.log("node");
             if (
                 node.object?.type === "MemberExpression" &&
                 node.object.object?.type === "Identifier" &&
@@ -233,9 +231,7 @@ function replaceLocation(code, targetUrl) {
                 node.object.property.name === "location" &&
                 node.property?.type === "Identifier"
             ) {
-				console.log("correct props")
                 const parent = ancestors[ancestors.length - 2];
-				console.log(`parenttype: ${parent?.type}, parentleft: ${parent?.left}, parentagrument: ${parent?.argument}`)
                 const isLHS =
                     (parent.type === "AssignmentExpression" && parent.left === node) ||
                     (parent.type === "UpdateExpression" && parent.argument === node);
