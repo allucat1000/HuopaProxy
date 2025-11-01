@@ -463,9 +463,9 @@ async function handleProxy(req, res, method) {
             // Imports
             let code = patchImports(body, serverUrl, targetUrl)
 			code = code
-			  .replace(/\bwindow\.location\.href\b/g, `"${targetUrl}"`)
-			  .replace(/\bwindow\.location\.origin\b/g, `"${new URL(targetUrl).origin}"`)
-			  .replace(/\bwindow\.location\.pathname\b/g, `"${new URL(targetUrl).pathname}"`);
+			  .replace(/\bwindow\.location\.href(?!\s*=)/g, `"${targetUrl}"`)
+			  .replace(/\blocation\.href(?!\s*=)/g, `"${targetUrl}"`)
+			  .replace(/\bwindow\.location\.origin(?!\s*=)/g, `"${new URL(targetUrl).origin}"`);
             res.send(code);
 
         } else if (contentType.includes("text/css")) {
