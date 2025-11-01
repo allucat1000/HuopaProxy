@@ -5,8 +5,8 @@ import rateLimit from 'npm:express-rate-limit';
 import { CookieJar } from "npm:tough-cookie";
 import { init, parse } from "npm:es-module-lexer";
 import fetchCookie from "npm:fetch-cookie";
-import * as acorn from "acorn";
-import * as walk from "acorn-walk";
+import * as acorn from "npm:acorn";
+import * as walk from "npm:acorn-walk";
 
 import process from "node:process"
 
