@@ -230,10 +230,9 @@ function replaceLocation(code, targetUrl) {
                 node.object.object.type === "Identifier" &&
                 node.object.object.name === "window" &&
                 node.object.property.type === "Identifier" &&
-                node.object.property.name === "location" &&
-  				(!node.parent || node.parent.type !== "AssignmentExpression")
+                node.object.property.name === "location"
             ) {
-                if (node.property.type === "Identifier") {
+                if (node.property.type === "Identifier" && (!node.parent || node.parent.type !== "AssignmentExpression" || node.parent.left !== node)) {
                     if (node.property.name === "href") {
                         replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
                     }
