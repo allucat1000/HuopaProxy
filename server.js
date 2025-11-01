@@ -5,8 +5,8 @@ import rateLimit from 'npm:express-rate-limit';
 import { CookieJar } from "npm:tough-cookie";
 import { init, parse } from "npm:es-module-lexer";
 import fetchCookie from "npm:fetch-cookie";
-import { parse } from "acorn";
-import { ancestor } from "acorn-walk";
+import * as acorn from "acorn";
+import * as walk from "acorn-walk";
 
 import process from "node:process"
 
@@ -216,46 +216,33 @@ function patchImports(code, serverUrl, targetUrl) {
 // Window location stuff
 
 function replaceLocation(code, targetUrl) {
-    const ast = parse(code, { ecmaVersion: "latest", sourceType: "module" });
+    const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "module" });
     const replacements = [];
+
     const targetOrigin = new URL(targetUrl).origin;
 
-    ancestor(ast, {
+    walk.ancestor(ast, {
         MemberExpression(node, ancestors) {
-            const parent = ancestors[ancestors.length - 2];
-
-            const isAssignmentLHS =
-                parent &&
-                parent.type === "AssignmentExpression" &&
-                parent.left === node;
-
-            const isUpdateExpression =
-                parent &&
-                parent.type === "UpdateExpression" &&
-                parent.argument === node;
-
-            if (isAssignmentLHS || isUpdateExpression) return;
-
             if (
                 node.object?.type === "MemberExpression" &&
                 node.object.object?.type === "Identifier" &&
                 node.object.object.name === "window" &&
                 node.object.property?.type === "Identifier" &&
-                node.object.property.name === "location"
+                node.object.property.name === "location" &&
+                node.property?.type === "Identifier"
             ) {
-                if (node.property?.name === "href") {
-                    replacements.push({
-                        start: node.start,
-                        end: node.end,
-                        value: JSON.stringify(targetUrl)
-                    });
+                const parent = ancestors[ancestors.length - 2];
+                const isLHS =
+                    (parent.type === "AssignmentExpression" && parent.left === node) ||
+                    (parent.type === "UpdateExpression" && parent.argument === node);
+
+                if (isLHS) return;
+
+                if (node.property.name === "href") {
+                    replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
                 }
-                if (node.property?.name === "origin") {
-                    replacements.push({
-                        start: node.start,
-                        end: node.end,
-                        value: JSON.stringify(targetOrigin)
-                    });
+                if (node.property.name === "origin") {
+                    replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetOrigin) });
                 }
             }
         }
@@ -268,6 +255,7 @@ function replaceLocation(code, targetUrl) {
 
     return patched;
 }
+
 async function handleProxy(req, res, method) {
   if (disabled) return res.status(403).send("The server is manually disabled.");
   if (blockedIps.includes(req.ip)) return res.status(403).send("Your IP address has been blocked.");
