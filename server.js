@@ -232,14 +232,18 @@ function replaceLocation(code, targetUrl) {
                 node.object.property.type === "Identifier" &&
                 node.object.property.name === "location"
             ) {
-                if (node.property.type === "Identifier" && (!node.parent || node.parent.type !== "AssignmentExpression" || node.parent.left !== node)) {
-                    if (node.property.name === "href") {
-                        replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
-                    }
-                    if (node.property.name === "origin") {
-                        replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetOrigin) });
-                    }
-                }
+                if (node.property.name === "href" || node.property.name === "origin") {
+				    const isAssignmentLHS = node.parent &&
+				        node.parent.type === "AssignmentExpression" &&
+				        node.parent.left === node;
+				    if (!isAssignmentLHS) {
+				        replacements.push({
+				            start: node.start,
+				            end: node.end,
+				            value: node.property.name === "href" ? JSON.stringify(targetUrl) : JSON.stringify(targetOrigin)
+				        });
+				    }
+				}
             }
         }
     });
