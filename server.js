@@ -415,29 +415,30 @@ async function handleProxy(req, res, method) {
                 const pageBase = new URL(${JSON.stringify(targetUrl)});
 
                 function deproxify(u) {
-                try {
-                    const abs = new URL(u, pageBase);
-                    if (abs.origin === server.origin && abs.pathname === server.pathname) {
-                    const inner = abs.searchParams.get("url");
-                    return inner || abs.href;
-                    }
-                    return abs.href;
-                } catch(e) { return u; }
-                }
+					try {
+						const abs = new URL(u, pageBase);
+						if (abs.origin === server.origin && abs.searchParams.has("url")) {
+							return abs.searchParams.get("url") || abs.href;
+						}
+						return abs.href;
+					} catch (e) {
+						return u;
+					}
+				}
 
-                // Wrap URL for proxying
-                function proxify(u) {
-                    const resolved = new URL(deproxify(u), pageBase).href;
-                    if (resolved.startsWith("ws:") || 
-                        resolved.startsWith("wss:") || 
-                        resolved.startsWith("data:") || 
-                        resolved.startsWith("javascript:")) {
-                        return resolved;
-                    }
-                    const p = new URL(server.href);
-                    p.searchParams.set("url", resolved);
-                    return p.href;
-                }
+				function proxify(u) {
+					try {
+						const resolved = new URL(deproxify(u), pageBase).href;
+
+						if (/^(ws|wss|data|javascript):/.test(resolved)) return resolved;
+
+						const p = new URL(server.href);
+						p.searchParams.set("url", resolved);
+						return p.href;
+					} catch (e) {
+						return u;
+					}
+				}
 
                 // Safe location overrides
                 try {
