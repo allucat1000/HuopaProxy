@@ -5,6 +5,8 @@ import rateLimit from 'npm:express-rate-limit';
 import { CookieJar } from "npm:tough-cookie";
 import { init, parse } from "npm:es-module-lexer";
 import fetchCookie from "npm:fetch-cookie";
+import * as acorn from "npm:acorn";
+import * as walk from "npm:acorn-walk";
 
 import process from "node:process"
 
@@ -211,6 +213,44 @@ function patchImports(code, serverUrl, targetUrl) {
     return patched;
 }
 
+// Window location stuff
+
+function replaceLocation(code, targetUrl) {
+    const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "module" });
+
+    const replacements = [];
+
+    const targetOrigin = new URL(targetUrl).origin;
+
+    walk.simple(ast, {
+        MemberExpression(node) {
+            if (
+                node.object &&
+                node.object.type === "MemberExpression" &&
+                node.object.object.type === "Identifier" &&
+                node.object.object.name === "window" &&
+                node.object.property.type === "Identifier" &&
+                node.object.property.name === "location"
+            ) {
+                if (node.property.type === "Identifier") {
+                    if (node.property.name === "href") {
+                        replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
+                    }
+                    if (node.property.name === "origin") {
+                        replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetOrigin) });
+                    }
+                }
+            }
+        }
+    });
+
+    let patched = code;
+    replacements.sort((a, b) => b.start - a.start).forEach(r => {
+        patched = patched.slice(0, r.start) + r.value + patched.slice(r.end);
+    });
+
+    return patched;
+}
 
 
 async function handleProxy(req, res, method) {
@@ -462,10 +502,7 @@ async function handleProxy(req, res, method) {
             
             // Imports
             let code = patchImports(body, serverUrl, targetUrl)
-			code = code
-			  .replace(/\bwindow\.location\.href(?!\s*=)/g, `"${targetUrl}"`)
-			  .replace(/\blocation\.href(?!\s*=)/g, `"${targetUrl}"`)
-			  .replace(/\bwindow\.location\.origin(?!\s*=)/g, `"${new URL(targetUrl).origin}"`);
+			code = replaceLocation(code, targetUrl);
             res.send(code);
 
         } else if (contentType.includes("text/css")) {
