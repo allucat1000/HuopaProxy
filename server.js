@@ -309,7 +309,7 @@ async function handleProxy(req, res, method) {
   `
     if (!targetUrl) return res.status(400).send(missingUrlHtml);
 
-    try {
+    //try {
         if (targetUrl.startsWith("file://")) return res.status(404).send("Unable to access local file!");
 
         const targetOrigin = new URL(targetUrl).origin;
@@ -524,7 +524,7 @@ async function handleProxy(req, res, method) {
             const buffer = await response.arrayBuffer();
             res.send(Buffer.from(buffer));
         }
-    } catch (err) {
+    /*} catch (err) {
         console.error("Error fetching " + targetUrl + ": " + err)
 
         const failFetchErrorHtml = `
@@ -575,7 +575,7 @@ async function handleProxy(req, res, method) {
 </html>
         `;
         res.status(500).send(failFetchErrorHtml);
-    }
+    }*/
 }
 
 function escapeHtml(str) {
