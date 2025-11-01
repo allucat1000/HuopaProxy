@@ -340,7 +340,7 @@ async function handleProxy(req, res, method) {
             const body = await response.text();
             const $ = cheerio.load(body);
             const pageBase = new URL(targetUrl)
-            const baseTag = `<base href="${pageBase.href.endsWith("//") ? pageBase.href.slice(0, -1) : pageBase.href}/">`;
+            const baseTag = `<base href="${pageBase.href.endsWith("/") ? pageBase.href.slice(0, -1) : pageBase.href}/">`;
             $("head").prepend(baseTag + "\n");
             const attrMap = {
                 a: "href",
