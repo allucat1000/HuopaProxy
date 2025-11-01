@@ -5,8 +5,8 @@ import rateLimit from 'npm:express-rate-limit';
 import { CookieJar } from "npm:tough-cookie";
 import { init, parse } from "npm:es-module-lexer";
 import fetchCookie from "npm:fetch-cookie";
-import * as acorn from "npm:acorn";
-import * as walk from "npm:acorn-walk";
+import { parse } from "acorn";
+import { ancestor } from "acorn-walk";
 
 import process from "node:process"
 
@@ -216,14 +216,26 @@ function patchImports(code, serverUrl, targetUrl) {
 // Window location stuff
 
 function replaceLocation(code, targetUrl) {
-    const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "module" });
-
+    const ast = parse(code, { ecmaVersion: "latest", sourceType: "module" });
     const replacements = [];
-
     const targetOrigin = new URL(targetUrl).origin;
 
-    walk.simple(ast, {
-        MemberExpression(node) {
+    ancestor(ast, {
+        MemberExpression(node, ancestors) {
+            const parent = ancestors[ancestors.length - 2];
+
+            const isAssignmentLHS =
+                parent &&
+                parent.type === "AssignmentExpression" &&
+                parent.left === node;
+
+            const isUpdateExpression =
+                parent &&
+                parent.type === "UpdateExpression" &&
+                parent.argument === node;
+
+            if (isAssignmentLHS || isUpdateExpression) return;
+
             if (
                 node.object &&
                 node.object.type === "MemberExpression" &&
@@ -232,18 +244,12 @@ function replaceLocation(code, targetUrl) {
                 node.object.property.type === "Identifier" &&
                 node.object.property.name === "location"
             ) {
-                if (node.property.name === "href" || node.property.name === "origin") {
-				    const isAssignmentLHS = node.parent &&
-				        node.parent.type === "AssignmentExpression" &&
-				        node.parent.left === node;
-				    if (!isAssignmentLHS) {
-				        replacements.push({
-				            start: node.start,
-				            end: node.end,
-				            value: node.property.name === "href" ? JSON.stringify(targetUrl) : JSON.stringify(targetOrigin)
-				        });
-				    }
-				}
+                if (node.property.name === "href") {
+                    replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
+                }
+                if (node.property.name === "origin") {
+                    replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetOrigin) });
+                }
             }
         }
     });
@@ -255,7 +261,6 @@ function replaceLocation(code, targetUrl) {
 
     return patched;
 }
-
 
 async function handleProxy(req, res, method) {
   if (disabled) return res.status(403).send("The server is manually disabled.");
