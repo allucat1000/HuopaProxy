@@ -339,8 +339,8 @@ async function handleProxy(req, res, method) {
         if (contentType.includes("text/html")) {
             const body = await response.text();
             const $ = cheerio.load(body);
-            const pageOrigin = new URL(targetUrl).origin;
-            const baseTag = `<base href="${pageOrigin}/">`;
+            const pageBase = new URL(targetUrl)
+            const baseTag = `<base href="${pageBase.href}/">`;
             $("head").prepend(baseTag + "\n");
             const attrMap = {
                 a: "href",
@@ -417,27 +417,19 @@ async function handleProxy(req, res, method) {
                 function deproxify(u) {
 					try {
 						const abs = new URL(u, pageBase);
-						if (abs.origin === server.origin && abs.searchParams.has("url")) {
-							return abs.searchParams.get("url") || abs.href;
+						if (abs.origin === server.origin && abs.pathname === server.pathname) {
+							const inner = abs.searchParams.get("url");
+							return inner || abs.href;
 						}
 						return abs.href;
-					} catch (e) {
-						return u;
-					}
+					} catch(e) { return u; }
 				}
 
 				function proxify(u) {
-					try {
-						const resolved = new URL(deproxify(u), pageBase).href;
-
-						if (/^(ws|wss|data|javascript):/.test(resolved)) return resolved;
-
-						const p = new URL(server.href);
-						p.searchParams.set("url", resolved);
-						return p.href;
-					} catch (e) {
-						return u;
-					}
+					const resolved = new URL(deproxify(u), pageBase).href;
+					const p = new URL(server.href);
+					p.searchParams.set("url", resolved);
+					return p.href;
 				}
 
                 // Safe location overrides
