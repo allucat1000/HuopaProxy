@@ -231,7 +231,7 @@ function replaceLocation(code, targetUrl) {
                 node.object.object.name === "window" &&
                 node.object.property.type === "Identifier" &&
                 node.object.property.name === "location" &&
-  				node.parent.type !== "AssignmentExpression"
+  				(!node.parent || node.parent.type !== "AssignmentExpression")
             ) {
                 if (node.property.type === "Identifier") {
                     if (node.property.name === "href") {
