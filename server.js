@@ -216,7 +216,7 @@ function patchImports(code, serverUrl, targetUrl) {
 // Window location stuff
 
 function replaceLocation(code, targetUrl) {
-    const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "module" });
+    const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
     const replacements = [];
 
     const targetOrigin = new URL(targetUrl).origin;
