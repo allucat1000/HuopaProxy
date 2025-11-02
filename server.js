@@ -262,35 +262,45 @@ function replaceLocation(code, targetUrl) {
     },
 
     AssignmentExpression(node, ancestors) {
-      if (
-        node.left?.type === "MemberExpression" &&
-        node.left.property?.type === "Identifier" &&
-        node.left.property.name === "href"
-      ) {
-        const leftObj = node.left.object;
-        const isWindowLocation =
-          (leftObj.type === "MemberExpression" &&
-            leftObj.object?.type === "Identifier" &&
-            leftObj.object.name === "window" &&
-            leftObj.property?.type === "Identifier" &&
-            leftObj.property.name === "location")
-          || (leftObj.type === "Identifier" && leftObj.name === "location");
-
-        if (!isWindowLocation) return;
-
-        const rhsText = code.slice(node.right.start, node.right.end);
-        const call = `window.parent.loadPage(${rhsText})`;
-
-        const parent = ancestors[ancestors.length - 2];
-        if (parent && parent.type === "ExpressionStatement") {
-
-          const safeEnd = extendToStatementBoundary(code, parent.end);
-          replacements.push({ start: parent.start, end: safeEnd, value: `${call};` });
-        } else {
-          replacements.push({ start: node.start, end: node.end, value: call });
-        }
-      }
-    },
+	  if (
+	    node.left?.type === "MemberExpression" &&
+	    node.left.property?.type === "Identifier" &&
+	    node.left.property.name === "href"
+	  ) {
+	    const leftObj = node.left.object;
+	    const isWindowLocation =
+	      (leftObj.type === "MemberExpression" &&
+	        leftObj.object?.type === "Identifier" &&
+	        leftObj.object.name === "window" &&
+	        leftObj.property?.type === "Identifier" &&
+	        leftObj.property.name === "location") ||
+	      (leftObj.type === "Identifier" && leftObj.name === "location");
+	
+	    if (!isWindowLocation) return;
+	
+	    const rhsText = code.slice(node.right.start, node.right.end);
+	
+	    const call = `window.parent.loadPage(${rhsText})`;
+	
+	    let end = node.end;
+	    let balance = 0;
+	    for (let i = node.end; i < code.length; i++) {
+	      const ch = code[i];
+	      if (ch === '(') balance++;
+	      else if (ch === ')') {
+	        if (balance === 0) {
+	          end = i + 1;
+	          break;
+	        } else balance--;
+	      } else if (ch === ';' || ch === '\n') {
+	        end = i;
+	        break;
+	      }
+	    }
+	
+	    replacements.push({ start: node.start, end, value: `${call};` });
+	  }
+	},
 
     CallExpression(node, ancestors) {
       const callee = node.callee;
