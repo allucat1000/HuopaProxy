@@ -225,7 +225,7 @@ function patchImports(code, serverUrl, targetUrl) {
 // Window location stuff
 
 function replaceLocation(code, targetUrl) {
-  const targetOrigin = new URL(targetUrl).origin;
+  const targetUrlCalc = new URL(targetUrl)
 
   let ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
   const replacementsStage1 = [];
@@ -250,8 +250,23 @@ function replaceLocation(code, targetUrl) {
         if (node.property.name === "href") {
           replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
         }
+		if (node.property.name === "pathname") {
+          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.pathname) });
+        }
+		if (node.property.name === "protocol") {
+          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.protocol) });
+        }
+		if (node.property.name === "search") {
+          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.search) });
+        }
+		if (node.property.name === "host") {
+          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.host) });
+        }
+		if (node.property.name === "searchParams") {
+          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.searchParams) });
+        }
         if (node.property.name === "origin") {
-          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetOrigin) });
+          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.origin) });
         }
       }
     }
