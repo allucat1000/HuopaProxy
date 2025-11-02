@@ -216,79 +216,81 @@ function patchImports(code, serverUrl, targetUrl) {
 // Window location stuff
 
 function replaceLocation(code, targetUrl) {
-  const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
-  const replacements = [];
-  const targetOrigin = new URL(targetUrl).origin;
-
-  function isWindowLocation(node) {
-    return (
-      (node.type === "MemberExpression" &&
-        node.object?.type === "Identifier" &&
-        node.object.name === "window" &&
-        node.property?.type === "Identifier" &&
-        node.property.name === "location") ||
-      (node.type === "Identifier" && node.name === "location")
-    );
-  }
-
-  walk.ancestor(ast, {
-    MemberExpression(node, ancestors) {
-      const parent = ancestors[ancestors.length - 2];
-      const isLHS =
-        parent &&
-        ((parent.type === "AssignmentExpression" && parent.left === node) ||
-         (parent.type === "UpdateExpression" && parent.argument === node));
-      if (isLHS) return;
-
-      if (
-        node.object?.type === "MemberExpression" &&
-        node.object.object?.type === "Identifier" &&
-        node.object.object.name === "window" &&
-        node.object.property?.type === "Identifier" &&
-        node.object.property.name === "location" &&
-        node.property?.type === "Identifier"
-      ) {
-        if (node.property.name === "href") {
-          replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
-        }
-        if (node.property.name === "origin") {
-          replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetOrigin) });
-        }
-      }
-    },
-
-    AssignmentExpression(node) {
-      if (
-        node.left?.type === "MemberExpression" &&
-        node.left.property?.type === "Identifier" &&
-        node.left.property.name === "href" &&
-        isWindowLocation(node.left.object)
-      ) {
-        const rhsText = code.slice(node.right.start, node.right.end);
-        replacements.push({ start: node.start, end: node.end, value: `window.parent.loadPage(${rhsText});` });
-      }
-    },
-
-    CallExpression(node, ancestors) {
-      const callee = node.callee;
-      if (
-        callee?.type === "MemberExpression" &&
-        callee.property?.type === "Identifier" &&
-        (callee.property.name === "assign" || callee.property.name === "replace") &&
-        isWindowLocation(callee.object)
-      ) {
-        const argCode = node.arguments.length
-          ? code.slice(node.arguments[0].start, node.arguments[0].end)
-          : "undefined";
-
-        const parent = ancestors[ancestors.length - 2];
-        if (parent && parent.type === "ExpressionStatement") {
-          replacements.push({ start: parent.start, end: parent.end, value: `window.parent.loadPage(${argCode});` });
-        } else {
-          replacements.push({ start: node.start, end: node.end, value: `window.parent.loadPage(${argCode})` });
-        }
-      }
-    }
+	const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
+	const replacements = [];
+	const targetOrigin = new URL(targetUrl).origin;
+	
+	function isWindowLocation(node) {
+	return (
+	  (node.type === "MemberExpression" &&
+		node.object?.type === "Identifier" &&
+		node.object.name === "window" &&
+		node.property?.type === "Identifier" &&
+		node.property.name === "location") ||
+	  (node.type === "Identifier" && node.name === "location")
+	);
+	}
+	
+	walk.ancestor(ast, {
+	MemberExpression(node, ancestors) {
+	  const parent = ancestors[ancestors.length - 2];
+	  const isLHS =
+		parent &&
+		((parent.type === "AssignmentExpression" && parent.left === node) ||
+		 (parent.type === "UpdateExpression" && parent.argument === node));
+	  if (isLHS) return;
+	
+	  if (
+		node.object?.type === "MemberExpression" &&
+		node.object.object?.type === "Identifier" &&
+		node.object.object.name === "window" &&
+		node.object.property?.type === "Identifier" &&
+		node.object.property.name === "location" &&
+		node.property?.type === "Identifier"
+	  ) {
+		if (node.property.name === "href") {
+		  replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
+		}
+		if (node.property.name === "origin") {
+		  replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetOrigin) });
+		}
+	  }
+	},
+	
+	AssignmentExpression(node) {
+	  if (
+		node.left?.type === "MemberExpression" &&
+		node.left.property?.type === "Identifier" &&
+		node.left.property.name === "href" &&
+		isWindowLocation(node.left.object)
+	  ) {
+		const rhsText = code.slice(node.right.start, node.right.end);
+		console.log(`rhsText: ${rhsText}`)
+		replacements.push({ start: node.start, end: node.end, value: `window.parent.loadPage(${rhsText});` });
+	  }
+	},
+	
+	CallExpression(node, ancestors) {
+	  const callee = node.callee;
+	  if (
+		callee?.type === "MemberExpression" &&
+		callee.property?.type === "Identifier" &&
+		(callee.property.name === "assign" || callee.property.name === "replace") &&
+		isWindowLocation(callee.object)
+	  ) {
+		const argCode = node.arguments.length
+		  ? code.slice(node.arguments[0].start, node.arguments[0].end)
+		  : "undefined";
+	
+		const parent = ancestors[ancestors.length - 2];
+		console.log(argCode);
+		if (parent && parent.type === "ExpressionStatement") {
+		  replacements.push({ start: parent.start, end: parent.end, value: `window.parent.loadPage(${argCode});` });
+		} else {
+		  replacements.push({ start: node.start, end: node.end, value: `window.parent.loadPage(${argCode})` });
+		}
+	  }
+	}
   });
 
   let patched = code;
