@@ -225,122 +225,130 @@ function patchImports(code, serverUrl, targetUrl) {
 // Window location stuff
 
 function replaceLocation(code, targetUrl) {
-  const targetUrlCalc = new URL(targetUrl)
-
-  let ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
-  const replacementsStage1 = [];
-
-  walk.ancestor(ast, {
-    MemberExpression(node, ancestors) {
-      const parent = ancestors[ancestors.length - 2];
-      const isLHS =
-        parent &&
-        ((parent.type === "AssignmentExpression" && parent.left === node) ||
-         (parent.type === "UpdateExpression" && parent.argument === node));
-      if (isLHS) return;
-
-      if (
-        node.object?.type === "MemberExpression" &&
-        node.object.object?.type === "Identifier" &&
-        node.object.object.name === "window" &&
-        node.object.property?.type === "Identifier" &&
-        node.object.property.name === "location" &&
-        node.property?.type === "Identifier"
-      ) {
-        if (node.property.name === "href") {
-          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
-        }
+	const targetUrlCalc = new URL(targetUrl)
+	let ast;
+	let type = "script"
+	try {
+		ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
+	} catch (e) {
+		if (e.message.includes("sourceType: module") {
+			type = "module";
+			ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "module" });
+		}
+	}
+	const replacementsStage1 = [];
+	
+	walk.ancestor(ast, {
+	MemberExpression(node, ancestors) {
+	  const parent = ancestors[ancestors.length - 2];
+	  const isLHS =
+		parent &&
+		((parent.type === "AssignmentExpression" && parent.left === node) ||
+		 (parent.type === "UpdateExpression" && parent.argument === node));
+	  if (isLHS) return;
+	
+	  if (
+		node.object?.type === "MemberExpression" &&
+		node.object.object?.type === "Identifier" &&
+		node.object.object.name === "window" &&
+		node.object.property?.type === "Identifier" &&
+		node.object.property.name === "location" &&
+		node.property?.type === "Identifier"
+	  ) {
+		if (node.property.name === "href") {
+		  replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
+		}
 		if (node.property.name === "pathname") {
-          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.pathname) });
-        }
+		  replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.pathname) });
+		}
 		if (node.property.name === "protocol") {
-          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.protocol) });
-        }
+		  replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.protocol) });
+		}
 		if (node.property.name === "search") {
-          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.search) });
-        }
+		  replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.search) });
+		}
 		if (node.property.name === "host") {
-          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.host) });
-        }
+		  replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.host) });
+		}
 		if (node.property.name === "searchParams") {
-          replacementsStage1.push({ start: node.start, end: node.end, value: `new URLSearchParams(${JSON.stringify(targetUrlCalc.search)})` });
-        }
-        if (node.property.name === "origin") {
-          replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.origin) });
-        }
-      }
-    }
-  });
-
-  let patched = code;
-  replacementsStage1.sort((a, b) => b.start - a.start).forEach(r => {
-    patched = patched.slice(0, r.start) + r.value + patched.slice(r.end);
-  });
-
-  ast = acorn.parse(patched, { ecmaVersion: "latest", sourceType: "script" });
-  const replacementsStage2 = [];
-
-  walk.ancestor(ast, {
-    AssignmentExpression(node, ancestors) {
-      if (
-        node.left?.type === "MemberExpression" &&
-        node.left.property?.type === "Identifier" &&
-        node.left.property.name === "href"
-      ) {
-        const leftObj = node.left.object;
-        const isWindowLocation =
-          (leftObj.type === "MemberExpression" &&
-            leftObj.object?.type === "Identifier" &&
-            leftObj.object.name === "window" &&
-            leftObj.property?.type === "Identifier" &&
-            leftObj.property.name === "location") ||
-          (leftObj.type === "Identifier" && leftObj.name === "location");
-        if (!isWindowLocation) return;
-
-        const rhsText = patched.slice(node.right.start, node.right.end);
-        const call = `window.parent.loadPage(new URL(${rhsText}, ${JSON.stringify(targetUrl)}).href)`;
-
-        const parent = ancestors[ancestors.length - 2];
-        const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
-
-        replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call}` });
-      }
-    },
-
-    CallExpression(node, ancestors) {
-      const callee = node.callee;
-      if (
-        callee?.type === "MemberExpression" &&
-        callee.property?.type === "Identifier" &&
-        (callee.property.name === "assign" || callee.property.name === "replace")
-      ) {
-        const obj = callee.object;
-        const isLocationMethod =
-          (obj?.type === "MemberExpression" &&
-            obj.object?.type === "Identifier" &&
-            obj.object.name === "window" &&
-            obj.property?.type === "Identifier" &&
-            obj.property.name === "location") ||
-          (obj?.type === "Identifier" && obj.name === "location");
-
-        if (!isLocationMethod) return;
-
-        const argCode = node.arguments.length ? patched.slice(node.arguments[0].start, node.arguments[0].end) : "undefined";
-        const call = `window.parent.loadPage(new URL(${argCode}, ${JSON.stringify(targetUrl)}).href)`;
-
-        const parent = ancestors[ancestors.length - 2];
-        const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
-
-        replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call}` });
-      }
-    }
-  });
-
-  replacementsStage2.sort((a, b) => b.start - a.start).forEach(r => {
-    patched = patched.slice(0, r.start) + r.value + patched.slice(r.end);
-  });
-
-  return patched;
+		  replacementsStage1.push({ start: node.start, end: node.end, value: `new URLSearchParams(${JSON.stringify(targetUrlCalc.search)})` });
+		}
+		if (node.property.name === "origin") {
+		  replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.origin) });
+		}
+	  }
+	}
+	});
+	
+	let patched = code;
+	replacementsStage1.sort((a, b) => b.start - a.start).forEach(r => {
+	patched = patched.slice(0, r.start) + r.value + patched.slice(r.end);
+	});
+	
+	ast = acorn.parse(patched, { ecmaVersion: "latest", sourceType: type });
+	const replacementsStage2 = [];
+	
+	walk.ancestor(ast, {
+	AssignmentExpression(node, ancestors) {
+	  if (
+		node.left?.type === "MemberExpression" &&
+		node.left.property?.type === "Identifier" &&
+		node.left.property.name === "href"
+	  ) {
+		const leftObj = node.left.object;
+		const isWindowLocation =
+		  (leftObj.type === "MemberExpression" &&
+			leftObj.object?.type === "Identifier" &&
+			leftObj.object.name === "window" &&
+			leftObj.property?.type === "Identifier" &&
+			leftObj.property.name === "location") ||
+		  (leftObj.type === "Identifier" && leftObj.name === "location");
+		if (!isWindowLocation) return;
+	
+		const rhsText = patched.slice(node.right.start, node.right.end);
+		const call = `window.parent.loadPage(new URL(${rhsText}, ${JSON.stringify(targetUrl)}).href)`;
+	
+		const parent = ancestors[ancestors.length - 2];
+		const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
+	
+		replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call}` });
+	  }
+	},
+	
+	CallExpression(node, ancestors) {
+	  const callee = node.callee;
+	  if (
+		callee?.type === "MemberExpression" &&
+		callee.property?.type === "Identifier" &&
+		(callee.property.name === "assign" || callee.property.name === "replace")
+	  ) {
+		const obj = callee.object;
+		const isLocationMethod =
+		  (obj?.type === "MemberExpression" &&
+			obj.object?.type === "Identifier" &&
+			obj.object.name === "window" &&
+			obj.property?.type === "Identifier" &&
+			obj.property.name === "location") ||
+		  (obj?.type === "Identifier" && obj.name === "location");
+	
+		if (!isLocationMethod) return;
+	
+		const argCode = node.arguments.length ? patched.slice(node.arguments[0].start, node.arguments[0].end) : "undefined";
+		const call = `window.parent.loadPage(new URL(${argCode}, ${JSON.stringify(targetUrl)}).href)`;
+	
+		const parent = ancestors[ancestors.length - 2];
+		const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
+	
+		replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call}` });
+	  }
+	}
+	});
+	
+	replacementsStage2.sort((a, b) => b.start - a.start).forEach(r => {
+	patched = patched.slice(0, r.start) + r.value + patched.slice(r.end);
+	});
+	
+	return patched;
 }
 
 async function handleProxy(req, res, method) {
