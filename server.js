@@ -334,10 +334,11 @@ function replaceLocation(code, targetUrl) {
 		if (!isLocationMethod) return;
 	
 		const argCode = node.arguments.length ? patched.slice(node.arguments[0].start, node.arguments[0].end) : "undefined";
-		const call = `window.parent.loadPage(new URL(${argCode}, ${JSON.stringify(targetUrl)}).href)`;
 	
 		const parent = ancestors[ancestors.length - 2];
 		const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
+		let call = `window.parent.loadPage(new URL(${argCode}, ${JSON.stringify(targetUrl)}).href)`;
+		if (safeEnd) call += ";";
 	
 		replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call}` });
 	  }
