@@ -239,11 +239,79 @@ function replaceLocation(code, targetUrl) {
                 if (isLHS) return;
 
                 if (node.property.name === "href") {
-                    replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
+                    replacements.push({
+                        start: node.start,
+                        end: node.end,
+                        value: JSON.stringify(targetUrl)
+                    });
                 }
                 if (node.property.name === "origin") {
-                    replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetOrigin) });
+                    replacements.push({
+                        start: node.start,
+                        end: node.end,
+                        value: JSON.stringify(targetOrigin)
+                    });
                 }
+            }
+        },
+
+        AssignmentExpression(node) {
+            if (
+                node.left?.type === "MemberExpression" &&
+                node.left.property?.name === "href"
+            ) {
+                const obj = node.left.object;
+                const isWindowLocation =
+                    (obj.type === "MemberExpression" &&
+                        obj.object?.name === "window" &&
+                        obj.property?.name === "location") ||
+                    (obj.type === "Identifier" && obj.name === "location");
+
+                if (isWindowLocation) {
+                    const rhs = code.slice(node.right.start, node.right.end);
+                    const replacement = `window.parent.loadPage(${rhs})`;
+                    replacements.push({
+                        start: node.start,
+                        end: node.end,
+                        value: replacement
+                    });
+                }
+            }
+        },
+
+        CallExpression(node) {
+            if (
+                node.callee?.type === "MemberExpression" &&
+                node.callee.object?.type === "MemberExpression" &&
+                node.callee.object.object?.name === "window" &&
+                node.callee.object.property?.name === "location" &&
+                ["assign", "replace"].includes(node.callee.property?.name)
+            ) {
+                const argCode = node.arguments.length
+                    ? code.slice(node.arguments[0].start, node.arguments[0].end)
+                    : "undefined";
+                const replacement = `window.parent.loadPage(${argCode})`;
+                replacements.push({
+                    start: node.start,
+                    end: node.end,
+                    value: replacement
+                });
+            }
+
+            if (
+                node.callee?.type === "MemberExpression" &&
+                node.callee.object?.name === "location" &&
+                ["assign", "replace"].includes(node.callee.property?.name)
+            ) {
+                const argCode = node.arguments.length
+                    ? code.slice(node.arguments[0].start, node.arguments[0].end)
+                    : "undefined";
+                const replacement = `window.parent.loadPage(${argCode})`;
+                replacements.push({
+                    start: node.start,
+                    end: node.end,
+                    value: replacement
+                });
             }
         }
     });
