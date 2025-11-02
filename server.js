@@ -269,10 +269,11 @@ function replaceLocation(code, targetUrl) {
 
                 if (isWindowLocation) {
                     const rhs = code.slice(node.right.start, node.right.end);
+                    // replace only the RHS
                     const replacement = `window.parent.loadPage(${rhs})`;
                     replacements.push({
-                        start: node.start,
-                        end: node.end,
+                        start: node.right.start,
+                        end: node.right.end,
                         value: replacement
                     });
                 }
@@ -290,11 +291,10 @@ function replaceLocation(code, targetUrl) {
                 const argCode = node.arguments.length
                     ? code.slice(node.arguments[0].start, node.arguments[0].end)
                     : "undefined";
-                const replacement = `window.parent.loadPage(${argCode})`;
                 replacements.push({
                     start: node.start,
                     end: node.end,
-                    value: replacement
+                    value: `window.parent.loadPage(${argCode})`
                 });
             }
 
@@ -306,11 +306,10 @@ function replaceLocation(code, targetUrl) {
                 const argCode = node.arguments.length
                     ? code.slice(node.arguments[0].start, node.arguments[0].end)
                     : "undefined";
-                const replacement = `window.parent.loadPage(${argCode})`;
                 replacements.push({
                     start: node.start,
                     end: node.end,
-                    value: replacement
+                    value: `window.parent.loadPage(${argCode})`
                 });
             }
         }
