@@ -265,7 +265,7 @@ function replaceLocation(code, targetUrl) {
 		isWindowLocation(node.left.object)
 	  ) {
 		const rhsText = code.slice(node.right.start, node.right.end);
-		console.log(`rhsText: ${rhsText}`)
+		console.log(`rhsText: window.parent.loadPage(${rhsText});`)
 		replacements.push({ start: node.start, end: node.end, value: `window.parent.loadPage(${rhsText});` });
 	  }
 	},
