@@ -325,8 +325,8 @@ function replaceLocation(code, targetUrl) {
 	});
 	
 	let patched = code;
+	console.log(JSON.stringify(replacements));
 	replacements.sort((a, b) => b.start - a.start).forEach(r => {
-		console.log(patched.slice(r.end));
 		patched = patched.slice(0, r.start) + r.value + patched.slice(r.end);
 	});
 	console.log(patched)
