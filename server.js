@@ -218,11 +218,18 @@ function patchImports(code, serverUrl, targetUrl) {
 function replaceLocation(code, targetUrl) {
     const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
     const replacements = [];
-
     const targetOrigin = new URL(targetUrl).origin;
 
     walk.ancestor(ast, {
         MemberExpression(node, ancestors) {
+            const parent = ancestors[ancestors.length - 2];
+            const isLHS =
+                parent && (
+                    (parent.type === "AssignmentExpression" && parent.left === node) ||
+                    (parent.type === "UpdateExpression" && parent.argument === node)
+                );
+            if (isLHS) return;
+
             if (
                 node.object?.type === "MemberExpression" &&
                 node.object.object?.type === "Identifier" &&
@@ -231,86 +238,79 @@ function replaceLocation(code, targetUrl) {
                 node.object.property.name === "location" &&
                 node.property?.type === "Identifier"
             ) {
-                const parent = ancestors[ancestors.length - 2];
-                const isLHS =
-                    (parent.type === "AssignmentExpression" && parent.left === node) ||
-                    (parent.type === "UpdateExpression" && parent.argument === node);
-
-                if (isLHS) return;
-
                 if (node.property.name === "href") {
-                    replacements.push({
-                        start: node.start,
-                        end: node.end,
-                        value: JSON.stringify(targetUrl)
-                    });
+                    replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrl) });
                 }
                 if (node.property.name === "origin") {
+                    replacements.push({ start: node.start, end: node.end, value: JSON.stringify(targetOrigin) });
+                }
+            }
+        },
+
+        AssignmentExpression(node, ancestors) {
+            if (
+                node.left?.type === "MemberExpression" &&
+                node.left.property?.type === "Identifier" &&
+                node.left.property.name === "href"
+            ) {
+                const leftObj = node.left.object;
+                const isWindowLocation =
+                    (leftObj.type === "MemberExpression" &&
+                        leftObj.object?.type === "Identifier" &&
+                        leftObj.object.name === "window" &&
+                        leftObj.property?.type === "Identifier" &&
+                        leftObj.property.name === "location")
+                    || (leftObj.type === "Identifier" && leftObj.name === "location");
+
+                if (!isWindowLocation) return;
+
+                const rhsText = code.slice(node.right.start, node.right.end);
+                const call = `window.parent.loadPage(${rhsText})`;
+
+                const parent = ancestors[ancestors.length - 2];
+                if (parent && parent.type === "ExpressionStatement") {
+                    replacements.push({
+                        start: parent.start,
+                        end: parent.end,
+                        value: `${call};`
+                    });
+                } else {
                     replacements.push({
                         start: node.start,
                         end: node.end,
-                        value: JSON.stringify(targetOrigin)
+                        value: call
                     });
                 }
             }
         },
 
-        AssignmentExpression(node) {
-            if (
-                node.left?.type === "MemberExpression" &&
-                node.left.property?.name === "href"
-            ) {
-                const obj = node.left.object;
-                const isWindowLocation =
-                    (obj.type === "MemberExpression" &&
-                        obj.object?.name === "window" &&
-                        obj.property?.name === "location") ||
-                    (obj.type === "Identifier" && obj.name === "location");
-
-                if (isWindowLocation) {
-                    const rhs = code.slice(node.right.start, node.right.end);
-                    // replace only the RHS
-                    const replacement = `window.parent.loadPage(${rhs})`;
-                    replacements.push({
-                        start: node.right.start,
-                        end: node.right.end,
-                        value: replacement
-                    });
+        CallExpression(node, ancestors) {
+            const callee = node.callee;
+            let isLocationMethod = false;
+            if (callee?.type === "MemberExpression" &&
+                callee.property?.type === "Identifier" &&
+                (callee.property.name === "assign" || callee.property.name === "replace")) {
+                const obj = callee.object;
+                if (obj?.type === "MemberExpression" &&
+                    obj.object?.type === "Identifier" &&
+                    obj.object.name === "window" &&
+                    obj.property?.type === "Identifier" &&
+                    obj.property.name === "location") {
+                    isLocationMethod = true;
+                } else if (obj?.type === "Identifier" && obj.name === "location") {
+                    isLocationMethod = true;
                 }
             }
-        },
+            if (!isLocationMethod) return;
 
-        CallExpression(node) {
-            if (
-                node.callee?.type === "MemberExpression" &&
-                node.callee.object?.type === "MemberExpression" &&
-                node.callee.object.object?.name === "window" &&
-                node.callee.object.property?.name === "location" &&
-                ["assign", "replace"].includes(node.callee.property?.name)
-            ) {
-                const argCode = node.arguments.length
-                    ? code.slice(node.arguments[0].start, node.arguments[0].end)
-                    : "undefined";
-                replacements.push({
-                    start: node.start,
-                    end: node.end,
-                    value: `window.parent.loadPage(${argCode})`
-                });
-            }
+            const argCode = node.arguments.length ? code.slice(node.arguments[0].start, node.arguments[0].end) : "undefined";
+            const call = `window.parent.loadPage(${argCode})`;
 
-            if (
-                node.callee?.type === "MemberExpression" &&
-                node.callee.object?.name === "location" &&
-                ["assign", "replace"].includes(node.callee.property?.name)
-            ) {
-                const argCode = node.arguments.length
-                    ? code.slice(node.arguments[0].start, node.arguments[0].end)
-                    : "undefined";
-                replacements.push({
-                    start: node.start,
-                    end: node.end,
-                    value: `window.parent.loadPage(${argCode})`
-                });
+            const parent = ancestors[ancestors.length - 2];
+            if (parent && parent.type === "ExpressionStatement") {
+                replacements.push({ start: parent.start, end: parent.end, value: `${call};` });
+            } else {
+                replacements.push({ start: node.start, end: node.end, value: call });
             }
         }
     });
@@ -322,7 +322,6 @@ function replaceLocation(code, targetUrl) {
 
     return patched;
 }
-
 async function handleProxy(req, res, method) {
   if (disabled) return res.status(403).send("The server is manually disabled.");
   if (blockedIps.includes(req.ip)) return res.status(403).send("Your IP address has been blocked.");
