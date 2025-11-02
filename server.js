@@ -283,7 +283,7 @@ function replaceLocation(code, targetUrl) {
         if (!isWindowLocation) return;
 
         const rhsText = patched.slice(node.right.start, node.right.end);
-        const call = `window.parent.loadPage(${resolveUrl(targetUrl, rhsText)})`;
+        const call = `window.parent.loadPage(new URL(${rhsText}, ${JSON.stringify(targetUrl)}).href)`;
 
         const parent = ancestors[ancestors.length - 2];
         const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
@@ -311,7 +311,7 @@ function replaceLocation(code, targetUrl) {
         if (!isLocationMethod) return;
 
         const argCode = node.arguments.length ? patched.slice(node.arguments[0].start, node.arguments[0].end) : "undefined";
-        const call = `window.parent.loadPage(${resolveUrl(targetUrl, argCode)})`;
+        const call = `window.parent.loadPage(new URL(${argCode}, ${JSON.stringify(targetUrl)}).href)`;
 
         const parent = ancestors[ancestors.length - 2];
         const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
