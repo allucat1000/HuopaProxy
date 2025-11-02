@@ -309,7 +309,7 @@ function replaceLocation(code, targetUrl) {
 	
 		const parent = ancestors[ancestors.length - 2];
 		const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
-		let call = `window.parent.loadPage(new URL(${rhsText}, ${JSON.stringify(targetUrl)}).href)`;
+		let call = `window.parent.loadPage(new URL(${argCode}, ${JSON.stringify(targetUrl)}).href)`;
 		if (!safeEnd) call += ";";
 	
 		replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call}` });
