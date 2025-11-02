@@ -288,7 +288,7 @@ function replaceLocation(code, targetUrl) {
         const parent = ancestors[ancestors.length - 2];
         const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
 
-        replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call};` });
+        replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call}` });
       }
     },
 
@@ -577,6 +577,8 @@ async function handleProxy(req, res, method) {
             
             // Imports
             let code = patchImports(body, serverUrl, targetUrl)
+
+			// Location stuff
 			code = replaceLocation(code, targetUrl);
             res.send(code);
 
