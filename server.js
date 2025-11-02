@@ -344,11 +344,12 @@ function replaceLocation(code, targetUrl) {
 }
 
 async function handleProxy(req, res, method) {
-  if (disabled) return res.status(403).send("The server is manually disabled.");
-  if (blockedIps.includes(req.ip)) return res.status(403).send("Your IP address has been blocked.");
-  const targetUrl = req.query.url;
-
-  const missingUrlHtml = `
+	if (disabled) return res.status(403).send("The server is manually disabled.");
+	if (blockedIps.includes(req.ip)) return res.status(403).send("Your IP address has been blocked.");
+	const targetUrl = req.query.url;
+	const pageBase = req.query.pageBase || targetUrl;
+	
+	const missingUrlHtml = `
 <html lang="en">
     <head>
         <meta charset="UTF-8">
@@ -393,7 +394,7 @@ async function handleProxy(req, res, method) {
         <h2>Request parameters: ${escapeHtml(JSON.stringify(req.query)) || "Unknown"}</h2>
     </body>
 </html>
-  `
+  	`;
     if (!targetUrl) return res.status(400).send(missingUrlHtml);
 
 	try {
@@ -491,10 +492,14 @@ async function handleProxy(req, res, method) {
 
             for (const [tag, attr] of Object.entries(attrMap)) {
                 $(tag).each((_, el) => {
-                const val = $(el).attr(attr);
-                if (val && !val.startsWith("data:") && !val.startsWith("javascript:")) {
-                    $(el).attr(attr, rewriteUrl(serverUrl, new URL(val, targetUrl).href));
-                }
+                	const val = $(el).attr(attr);
+                	if (val && !val.startsWith("data:") && !val.startsWith("javascript:")) {
+					  const resolved = new URL(val, targetUrl).href;
+					  const rewritten = new URL(serverUrl);
+					  rewritten.searchParams.set("url", resolved);
+					  rewritten.searchParams.set("pageBase", targetUrl);
+					  $(el).attr(attr, rewritten.href);
+					}
                 });
             }
             $("style").each((_, el) => {
@@ -594,7 +599,7 @@ async function handleProxy(req, res, method) {
             let code = patchImports(body, serverUrl, targetUrl)
 
 			// Location stuff
-			code = replaceLocation(code, targetUrl);
+			code = replaceLocation(code, pageBase);
             res.send(code);
 
         } else if (contentType.includes("text/css")) {
