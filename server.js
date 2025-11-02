@@ -337,7 +337,7 @@ function replaceLocation(code, targetUrl) {
   });
 
   replacementsStage2.sort((a, b) => b.start - a.start).forEach(r => {
-    patched = patched.slice(0, r.start) + r.value + patched.slice(r.end + 1);
+    patched = patched.slice(0, r.start) + r.value + patched.slice(r.end);
   });
 
   return patched;
