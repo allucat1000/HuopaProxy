@@ -263,7 +263,7 @@ function replaceLocation(code, targetUrl) {
           replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.host) });
         }
 		if (node.property.name === "searchParams") {
-          replacementsStage1.push({ start: node.start, end: node.end, value: targetUrlCalc.searchParams });
+          replacementsStage1.push({ start: node.start, end: node.end, value: `new URLSearchParams(${JSON.stringify(targetUrlCalc.search)})` });
         }
         if (node.property.name === "origin") {
           replacementsStage1.push({ start: node.start, end: node.end, value: JSON.stringify(targetUrlCalc.origin) });
