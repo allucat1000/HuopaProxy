@@ -231,7 +231,7 @@ function replaceLocation(code, targetUrl) {
 	try {
 		ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
 	} catch (e) {
-		if (e.message.includes("sourceType: module") {
+		if (e.message.includes("sourceType: module")) {
 			type = "module";
 			ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "module" });
 		}
