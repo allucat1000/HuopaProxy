@@ -316,7 +316,7 @@ function replaceLocation(code, targetUrl) {
         const parent = ancestors[ancestors.length - 2];
         const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
 
-        replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call};` });
+        replacementsStage2.push({ start: node.start, end: safeEnd, value: `${call}` });
       }
     }
   });
