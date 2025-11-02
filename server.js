@@ -170,6 +170,15 @@ function rewriteUrl(baseServerUrl, targetUrl) {
   }
 }
 
+function resolveUrl(currentUrl, dynamicUrl) {
+  try {
+    return new URL(dynamicUrl, currentUrl).href;
+  } catch (e) {
+    console.error("Invalid URL:", dynamicUrl, "with base", currentUrl);
+    return dynamicUrl;
+  }
+}
+
 // (JS imports)
 await init;
 
@@ -274,7 +283,7 @@ function replaceLocation(code, targetUrl) {
         if (!isWindowLocation) return;
 
         const rhsText = patched.slice(node.right.start, node.right.end);
-        const call = `window.parent.loadPage(${rhsText})`;
+        const call = `window.parent.loadPage(${resolveUrl(targetUrl, rhsText)})`;
 
         const parent = ancestors[ancestors.length - 2];
         const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
@@ -302,7 +311,7 @@ function replaceLocation(code, targetUrl) {
         if (!isLocationMethod) return;
 
         const argCode = node.arguments.length ? patched.slice(node.arguments[0].start, node.arguments[0].end) : "undefined";
-        const call = `window.parent.loadPage(${argCode})`;
+        const call = `window.parent.loadPage(${resolveUrl(targetUrl, argCode)})`;
 
         const parent = ancestors[ancestors.length - 2];
         const safeEnd = parent && parent.type === "ExpressionStatement" ? parent.end : node.end;
