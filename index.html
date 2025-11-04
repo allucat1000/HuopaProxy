@@ -644,43 +644,33 @@
     function deproxify(u, currentRemoteBase) {
         try {
         const abs = new URL(u, currentRemoteBase);
-        if (abs.origin === server.origin && abs.pathname === server.pathname) {
-            const inner = abs.searchParams.get("url");
-            return inner ? inner : abs.href;
+        if (abs.origin === server.origin && abs.searchParams.has("url")) {
+            return abs.searchParams.get("url") || abs.href;
         }
         return abs.href;
         } catch { return u; }
     }
 
-    function rewriteUrl(baseServerUrl, targetUrl) {
+    function rewriteUrl(baseServerUrl, u, currentUrl) {
         try {
-            if (!targetUrl ||
-                targetUrl.startsWith("data:") ||
-                targetUrl.startsWith("javascript:") ||
-                targetUrl.startsWith("wss:") ||
-                targetUrl.startsWith("ws:")
-            ) {
-            return targetUrl;
-            }
+            const resolved = new URL(deproxify(u), currentUrl).href;
 
-            const resolved = new URL(targetUrl, window.location.href).href;
+            if (/^(ws|wss|data|javascript):/.test(resolved)) return resolved;
 
-            const proxied = new URL(baseServerUrl);
-            proxied.searchParams.set("url", resolved);
-
-            return proxied.href;
-
+            const p = new URL(baseServerUrl);
+            p.searchParams.set("url", resolved);
+            return p.href;
         } catch (e) {
-            console.error("proxify failed for", targetUrl, e.message);
-            return targetUrl;
+            return u;
         }
     }
+
     function hookConsole(frame, id) {
         const win = frame.contentWindow;
         if (win._consoleHooked) return;
         win._consoleHooked = true;
 
-        const levels = ["log", "warn", "error", "info"];
+        /*const levels = ["log", "warn", "error", "info"];
         for (const level of levels) {
             const orig = win.console[level];
             win.console[level] = (...args) => {
@@ -693,7 +683,7 @@
         });
         win.addEventListener("unhandledrejection", e => {
             siteLogs[id].push(["error", "Unhandled rejection: " + e.reason]);
-        });
+        });*/
     }
     function renderIntoIframe(html, remoteUrl) {
         currentUrl = remoteUrl;
@@ -747,13 +737,13 @@
 
         // Imports
 
-        const origImport = frame.contentWindow.__proto__.import;
+        const origImport = frame.contentWindow?.__proto__?.import;
 
         win.__proto__.import = async function (path) {
             if (typeof path === "string") {
                 if (!path.startsWith("http") && !path.startsWith("data:") && !path.startsWith("//")) {
                     const abs = new URL(path, win.location.href).href;
-                    path = rewriteUrl(serverUrl, abs);
+                    path = rewriteUrl(serverUrl, abs, remoteUrl);
                 }
             }
             return origImport(path);
@@ -769,9 +759,22 @@
             loadPage(next);
         });
 
-        // Forms
+        // Location stuff
+
         win.history.pushState = () => {}
         win.history.replaceState = () => {}
+
+        win.addEventListener("beforeunload", e => {
+        const next = win.location.href;
+        if (win.parent && typeof win.parent.loadPage === "function") {
+            e.preventDefault();
+            e.returnValue = "";
+            loadPage(next);
+            return false;
+        }
+        });
+
+        // Forms
 
         const submitHandler = e => {
             const form = e.target.closest("form");
@@ -811,9 +814,9 @@
         const origFetch = win.fetch;
         win.fetch = function (input, init) {
             if (typeof input === "string") {
-                input = rewriteUrl(serverUrl, input);
+                input = rewriteUrl(serverUrl, input, remoteUrl);
             } else if (input instanceof Request) {
-                const newReq = new Request(rewriteUrl(serverUrl, input.url), {
+                const newReq = new Request(rewriteUrl(serverUrl, input.url, remoteUrl), {
                     method: input.method,
                     headers: input.headers,
                     body: input.body,
@@ -841,7 +844,7 @@
         XMLHttpRequest.prototype.open = function(method, url, ...rest) {
             let rewrittenUrl = url;
             try {
-                rewrittenUrl = rewriteUrl(serverUrl, url);
+                rewrittenUrl = rewriteUrl(serverUrl, url, remoteUrl);
             } catch (e) {
                 siteLogs[id].push([
                     "error",
@@ -909,22 +912,27 @@
                 const serverUrl = "${serverUrl}";
                 const targetUrl = "${targetUrl}";
 
-                function rewriteUrlSafe(url) {
+                function rewriteUrlSafe(url, serverUrl, baseUrl) {
                     try {
-                        const absoluteUrl = new URL(url, targetUrl).href;
-                        return serverUrl + "?url=" + encodeURIComponent(absoluteUrl);
+                        if (!url || /^(data|javascript|wss?|blob):/i.test(url)) return url;
+
+                        const absoluteUrl = new URL(url, baseUrl).href;
+                        if (absoluteUrl.startsWith(serverUrl)) return url;
+                        return \`\${serverUrl}?url=\${encodeURIComponent(absoluteUrl)}\`;
                     } catch {
                         return url;
                     }
                 }
 
                 function rewriteCss(css) {
-                    if (!css) return css;
-                    return css.replace(/url\(\\s*(['"]?)(.*?)\\1\s*\\)/g, (_, quote, url) => {
-                        let clean = url.trim();
-                        if (clean.startsWith("data:")) return \`url(\${url})\`;
-                        return \`url(\${rewriteUrlSafe(clean)})\`;
-                    });
+                    return css;
+                    try {
+                        return css.replace(/url\(\\s*(['"]?)(.*?)\\1\s*\\)/g, (_, quote, url) => {
+                            let clean = url.trim();
+                            if (clean.startsWith("data:")) return \`url(\${url})\`;
+                            return \`url(\${rewriteUrlSafe(clean, serverUrl, targetUrl)})\`;
+                        });
+                    } catch {}
                 }
 
                 function rewriteElement(el) {
@@ -937,8 +945,7 @@
                         if (el.tagName && el.tagName.toLowerCase() === tag) {
                             let val = el.getAttribute(attr);
                             if (val && !val.startsWith("data:") && !val.startsWith("javascript:") && !val.startsWith("ws:") && !val.startsWith("wss:")) {
-                                console.log(val + " rewritten");
-                                el.setAttribute(attr, rewriteUrlSafe(val));
+                                el.setAttribute(attr, rewriteUrlSafe(val, serverUrl, targetUrl));
                             }
                         }
                     }
@@ -961,7 +968,7 @@
                                 .split(",")
                                 .map(entry => {
                                     let [url, size] = entry.trim().split(/\\s+/, 2);
-                                    return rewriteUrlSafe(url) + (size ? " " + size : "");
+                                    return rewriteUrlSafe(url, serverUrl, targetUrl) + (size ? " " + size : "");
                                 })
                                 .join(", ");
                             el.setAttribute("srcset", rewritten);
