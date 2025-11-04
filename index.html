@@ -937,6 +937,7 @@
                         if (el.tagName && el.tagName.toLowerCase() === tag) {
                             let val = el.getAttribute(attr);
                             if (val && !val.startsWith("data:") && !val.startsWith("javascript:") && !val.startsWith("ws:") && !val.startsWith("wss:")) {
+                                console.log(val + " rewritten");
                                 el.setAttribute(attr, rewriteUrlSafe(val));
                             }
                         }
