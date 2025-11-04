@@ -654,14 +654,22 @@
 
     function rewriteUrl(baseServerUrl, targetUrl) {
         try {
-            if (!targetUrl || targetUrl.startsWith("data:") || targetUrl.startsWith("javascript:") || targetUrl.startsWith("wss:") || targetUrl.startsWith("ws:")) {
+            if (!targetUrl ||
+                targetUrl.startsWith("data:") ||
+                targetUrl.startsWith("javascript:") ||
+                targetUrl.startsWith("wss:") ||
+                targetUrl.startsWith("ws:")
+            ) {
             return targetUrl;
             }
-            const baseUrl = new URL(targetUrl).origin;
-            const resolved = new URL(targetUrl, baseUrl).href;
+
+            const resolved = new URL(targetUrl, window.location.href).href;
+
             const proxied = new URL(baseServerUrl);
-            proxied.searchParams.append("url", resolved);
+            proxied.searchParams.set("url", resolved);
+
             return proxied.href;
+
         } catch (e) {
             console.error("proxify failed for", targetUrl, e.message);
             return targetUrl;
