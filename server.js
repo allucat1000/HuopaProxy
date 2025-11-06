@@ -602,6 +602,7 @@ async function handleProxy(req, res, method) {
             res.send($.html());
         } else if (!/\b(javascript|ecmascript|module)\b/i.test(contentType)
 		&& !contentType.includes("text/")) {
+			res.writeHead(response.status, Object.fromEntries(response.headers));
 		
 		    response.body.pipeTo(
 		        new WritableStream({
@@ -615,6 +616,23 @@ async function handleProxy(req, res, method) {
 		
 		    return;
 		} else {
+			
+			const contentLength = Number(response.headers.get("content-length") || 0);
+
+			if (contentLength > 150_000) {
+				console.warn(`[SKIP REWRITE] Large JS detected (${(contentLength/1024/1024).toFixed(2)} MB)`);
+				res.writeHead(response.status, Object.fromEntries(response.headers));
+				response.body.pipeTo(
+			        new WritableStream({
+			            write(chunk) { res.write(chunk); },
+			            close() { res.end(); },
+			        })
+			    ).catch(err => {
+			        console.error("stream error", err);
+			        res.end();
+			    });
+				return;
+			}
 			let body = await response.text();
 		
 			if (/\b(javascript|ecmascript|module)\b/i.test(contentType)) {
