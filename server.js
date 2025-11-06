@@ -600,29 +600,16 @@ async function handleProxy(req, res, method) {
         
 
             res.send($.html());
-        } else if (!/\b(javascript|ecmascript|module)\b/i.test(contentType)
-		&& !contentType.includes("text/")) {
-			res.writeHead(response.status, Object.fromEntries(response.headers));
-		
-		    response.body.pipeTo(
-		        new WritableStream({
-		            write(chunk) { res.write(chunk); },
-		            close() { res.end(); },
-		        })
-		    ).catch(err => {
-		        console.error("stream error", err);
-		        res.end();
-		    });
-		
-		    return;
-		} else {
-			
+        } else{ 
+			const isJS = /\b(javascript|ecmascript|module)\b/i.test(contentType);
+			const isCSS = contentType.includes("text/css");
+			const isText = contentType.includes("text/");
 			const contentLength = Number(response.headers.get("content-length") || 0);
 
-			if (contentLength > 150_000) {
-				console.warn(`[SKIP REWRITE] Large JS detected (${(contentLength/1024/1024).toFixed(2)} MB)`);
-				res.writeHead(response.status, Object.fromEntries(response.headers));
-				response.body.pipeTo(
+			if ((!isJS && !isCSS) || contentLength > 150_000) {
+			    res.writeHead(response.status, Object.fromEntries(response.headers));
+			
+			    response.body?.pipeTo(
 			        new WritableStream({
 			            write(chunk) { res.write(chunk); },
 			            close() { res.end(); },
@@ -631,21 +618,25 @@ async function handleProxy(req, res, method) {
 			        console.error("stream error", err);
 			        res.end();
 			    });
-				return;
+			
+			    return;
 			}
+			
 			let body = await response.text();
-		
-			if (/\b(javascript|ecmascript|module)\b/i.test(contentType)) {
+			
+			if (isJS) {
 			    body = patchImports(body, serverUrl, targetUrl);
 			    body = replaceLocation(body, pageBase);
 			    return res.send(body);
 			}
 			
-			if (contentType.includes("text/css")) {
+			if (isCSS) {
 			    body = body.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, _q, url) => {
 			        const abs = new URL(url.trim(), targetUrl).href;
 			        return `url(${rewriteUrl(serverUrl, abs)})`;
 			    });
+			
+			    return res.send(body);
 			}
 		}
     } catch (err) {
