@@ -600,32 +600,36 @@ async function handleProxy(req, res, method) {
         
 
             res.send($.html());
-        } else if (/\b(javascript|ecmascript|module)\b/i.test(contentType)) {
-            const body = await response.text();
-            
-            // Imports
-            let code = patchImports(body, serverUrl, targetUrl)
-
-			// Location stuff
-			code = replaceLocation(code, pageBase);
-            res.send(code);
-
-        } else if (contentType.includes("text/css")) {
-            let body = await response.text();
-            body = body.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, _quote, url) => {
-                const clean = url.trim();
-                if (clean.startsWith("data:")) return `url(${url})`;
-                return `url(${rewriteUrl(serverUrl, new URL(clean, targetUrl).href)})`;
-            });
-            res.send(body);
-        } else if (contentType.includes("text/")) {
-            const body = await response.text();
-            res.send(body);
-        } else {
-            // Binary (images, PDFs, etc.)
-            const buffer = await response.arrayBuffer();
-            res.send(Buffer.from(buffer));
-        }
+        } else if (!/\b(javascript|ecmascript|module)\b/i.test(contentType)
+		&& !contentType.includes("text/")) {
+		
+		    response.body.pipeTo(
+		        new WritableStream({
+		            write(chunk) { res.write(chunk); },
+		            close() { res.end(); },
+		        })
+		    ).catch(err => {
+		        console.error("stream error", err);
+		        res.end();
+		    });
+		
+		    return;
+		} else {
+			let body = await response.text();
+		
+			if (/\b(javascript|ecmascript|module)\b/i.test(contentType)) {
+			    body = patchImports(body, serverUrl, targetUrl);
+			    body = replaceLocation(body, pageBase);
+			    return res.send(body);
+			}
+			
+			if (contentType.includes("text/css")) {
+			    body = body.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/g, (_, _q, url) => {
+			        const abs = new URL(url.trim(), targetUrl).href;
+			        return `url(${rewriteUrl(serverUrl, abs)})`;
+			    });
+			}
+		}
     } catch (err) {
         console.error("Error fetching " + targetUrl + ": " + err)
 
