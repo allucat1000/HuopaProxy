@@ -1,97 +1,122 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HuopaWebProxy</title>
-  <style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Huopa Proxy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,100..1000&display=swap" rel="stylesheet">
+
+<style>
     body {
       font-family: sans-serif;
       overflow: hidden;
       margin: 0;
+      background-color: rgba(25, 25, 25);
+      color: white;
     }
-    #page {
+
+    .page {
       width: 100%;
-      height: calc(100% - 3.25em);
+      height: calc(100%);
       position: absolute;
-      top: 3.25em;
+      top: 0;
       left: 0;
       border: none;
+      background-color: white;
     }
-    input {
-        width: calc(100% - 3em);
-        height: 0.7em;
-        padding: 1em;
-        border-radius: 2em;
-        background-color: rgb(255, 255, 255);
-        border-color: rgb(200, 200, 200);
-        border-style: solid;
-        border-width: 1px;
-        position: absolute;
-        left: 50%;
-        top: 0.5em;
-        transform: translateX(-50%);
-        color: black;
-    }
-  </style>
+</style>
 </head>
 <body>
-  <input id="searchInput">
-  <iframe id="page"></iframe>
-  <script type="module">
-    const searchInput = document.getElementById("searchInput");
-    const targetUrl = "https://www.startpage.com/"
+<script type="module">
+    let siteLogs = {}
+    let urls = {};
+    const url = new URL(window.location.href);
+    const params = new URLSearchParams(window.location.search)
+    let targetUrl = params.get("start") || "https://www.startpage.com/";
+    let selectedTab = 0;
+    let newTabId = 1;
     let currentUrl = null;
-    const serverUrl = "https://allucat1000-huopaproxy-29.deno.dev/proxy";
+    let title = targetUrl;
+    const serverUrl = params.get("server") || "https://allucat1000-huopaproxy-29.deno.dev/proxy";
     const server = new URL(serverUrl);
 
-    searchInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            if (searchInput.value) loadPage(searchInput.value, true);
-        }
-    })
+    let lastHovered = null;
+    let savedColor = "";
+    let savedSelect = "";
+    let contextmenuOpen = false;
+    let elementFind = false;
+    let selectedElem = null;
+
     function deproxify(u, currentRemoteBase) {
         try {
         const abs = new URL(u, currentRemoteBase);
-        if (abs.origin === server.origin && abs.pathname === server.pathname) {
-            const inner = abs.searchParams.get("url");
-            return inner ? inner : abs.href;
+        if (abs.origin === server.origin && abs.searchParams.has("url")) {
+            return abs.searchParams.get("url") || abs.href;
         }
         return abs.href;
         } catch { return u; }
     }
+
+    function rewriteUrl(baseServerUrl, u, currentUrl) {
+        try {
+            const resolved = new URL(deproxify(u), currentUrl).href;
+
+            if (/^(ws|wss|data|javascript):/.test(resolved)) return resolved;
+
+            const p = new URL(baseServerUrl);
+            p.searchParams.set("url", resolved);
+            return p.href;
+        } catch (e) {
+            return u;
+        }
+    }
+
+    
     function renderIntoIframe(html, remoteUrl) {
         currentUrl = remoteUrl;
-        searchInput.value = "";
-        searchInput.placeholder = currentUrl;
 
-        // Replace iframe
-        if (document.getElementById("page")) document.getElementById("page").remove();
+        if (document.getElementById(selectedTab)) document.getElementById(selectedTab).remove();
         const frame = document.createElement("iframe");
-        frame.id = "page";
+        frame.id = selectedTab;
+        frame.classList.add("page");
         document.body.append(frame);
-
-        // hotkey inside frame
-        frame.contentWindow.addEventListener("keydown", (e) => {
-            if (e.key.toLowerCase() === "r" && e.ctrlKey) {
-            e.preventDefault();
-            loadPage(currentUrl);
-            }
-        });
 
         const doc = frame.contentDocument || frame.contentWindow.document;
         doc.open(); doc.write(html); doc.close();
 
         const win = frame.contentWindow;
+        win.setTitle = window.setTitle;
+ 
+        win.eval(`
+        document.requestStorageAccess = async () => Promise.resolve();
+        document.hasStorageAccess = async () => true;
+        const titleEl = document.querySelector("title");
+        if (titleEl) window.setTitle(titleEl.textContent);
+        `);
+        
 
-        // Safe nav patches (don’t redefine location property)
-        win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; };
-        try {
-            win.location.assign = (u) => loadPage(deproxify(u, remoteUrl));
-            win.location.replace = (u) => loadPage(deproxify(u, remoteUrl));
-            win.location.reload  = ()  => loadPage(remoteUrl);
-        } catch {}
+        // SRI
+
+        doc.querySelectorAll("link[integrity], script[integrity]").forEach(el => {
+            el.removeAttribute("integrity");
+            el.removeAttribute("crossorigin");
+        });
+
+        // Imports
+
+        const origImport = frame.contentWindow?.__proto__?.import;
+
+        win.__proto__.import = async function (path) {
+            if (typeof path === "string") {
+                if (!path.startsWith("http") && !path.startsWith("data:") && !path.startsWith("//")) {
+                    const abs = new URL(path, win.location.href).href;
+                    path = rewriteUrl(serverUrl, abs, remoteUrl);
+                }
+            }
+            return origImport(path);
+        };
 
         // Links
         doc.addEventListener("click", e => {
@@ -103,30 +128,100 @@
             loadPage(next);
         });
 
-        // Forms
-        doc.querySelectorAll("form").forEach(form => {
-            form.addEventListener("submit", e => {
+        // Location stuff
+
+        win.history.pushState = () => {}
+        win.history.replaceState = () => {}
+
+        win.addEventListener("beforeunload", e => {
+        const next = win.location.href;
+        if (win.parent && typeof win.parent.loadPage === "function") {
             e.preventDefault();
+            e.returnValue = "";
+            loadPage(next);
+            return false;
+        }
+        });
+
+        // Forms
+
+        const submitHandler = e => {
+            const form = e.target.closest("form");
+            if (!form) return;
+
+            e.preventDefault();
+            
             const rawAction = form.getAttribute("action") || "";
             const action = deproxify(rawAction || remoteUrl, remoteUrl);
-            const fd = new FormData(form);
-            const params = new URLSearchParams(fd);
-
+            const formData = new FormData(form);
+            const params = new URLSearchParams(formData);
             if ((form.method || "get").toLowerCase() === "post") {
                 fetch(server.href + "?url=" + encodeURIComponent(action), {
-                method: "POST",
-                body: params,
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                credentials: "include"
+                    method: "POST",
+                    body: params,
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    credentials: "include"
                 })
                 .then(r => r.text())
                 .then(html => renderIntoIframe(html, action));
             } else {
-                const urlWithQs = action + (action.includes("?") ? "&" : "?") + params.toString();
-                loadPage(urlWithQs);
+                const url = action + (action.includes("?") ? "&" : "?") + params.toString();
+                loadPage(url);
             }
-            });
+        };
+        doc.addEventListener("submit", submitHandler, true);
+        doc.querySelectorAll("form").forEach(form => {
+            const nativeSubmit = form.submit;
+            form.submit = function() {
+                const ev = new Event("submit", { cancelable: true, bubbles: true });
+                if (form.dispatchEvent(ev)) {
+                    nativeSubmit.apply(form, arguments);
+                }
+            };
         });
+        // Patch fetch
+        const origFetch = win.fetch;
+        win.fetch = function (input, init) {
+            if (typeof input === "string") {
+                input = rewriteUrl(serverUrl, input, remoteUrl);
+            } else if (input instanceof Request) {
+                const newReq = new Request(rewriteUrl(serverUrl, input.url, remoteUrl), {
+                    method: input.method,
+                    headers: input.headers,
+                    body: input.body,
+                    mode: input.mode,
+                    credentials: input.credentials,
+                    cache: input.cache,
+                    redirect: input.redirect,
+                    referrer: input.referrer,
+                    integrity: input.integrity,
+                });
+                input = newReq;
+            }
+
+            return origFetch(input, init).catch(e => {
+                throw e;
+            });
+        };
+
+        // Patch XMLHttpRequest
+        const origOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+            let rewrittenUrl = url;
+            try {
+                rewrittenUrl = rewriteUrl(serverUrl, url, remoteUrl);
+            } catch (e) {
+                console.error(`rewriteUrl failed for ${url}: ${e.message}`);
+            }
+
+            try {
+                return origOpen.call(this, method, rewrittenUrl, ...rest);
+            } catch (e) {
+                throw e;
+            }
+        };
+
+
 
         // Meta refresh
         doc.querySelectorAll('meta[http-equiv="refresh"]').forEach(meta => {
@@ -139,33 +234,270 @@
             setTimeout(() => loadPage(next), delay);
             }
         });
+
+        // Location stuff
+
+        win.open = (u) => { loadPage(deproxify(u, remoteUrl)); return null; }
+
+        // Stuff
+
+        const noop = () => {};
+
+        win.addEventListener("popstate", e => {} );
+        injectMutationObserver(
+            win,
+            serverUrl,
+            remoteUrl
+        );
+    }
+    function injectMutationObserver(targetWindow, serverUrl, targetUrl) {
+        const attrMap = {
+            a: "href",
+            link: "href",
+            img: "src",
+            script: "src",
+            iframe: "src",
+            frame: "src",
+            embed: "src",
+            object: "data",
+            source: "src",
+            track: "src",
+            audio: "src",
+            video: "src",
+            form: "action",
+            area: "href",
+        };
+        const script = `
+            (function() {
+                const attrMap = ${JSON.stringify(attrMap)};
+                const serverUrl = "${serverUrl}";
+                const targetUrl = "${targetUrl}";
+ 
+
+                function shouldRewrite(el) {
+                    try {
+                    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+                    if (el.hasAttribute && el.hasAttribute('data-huopa-rewritten')) return false;
+                    return true;
+                    } catch {
+                    return false;
+                    }
+                }
+
+                function markRewritten(el) {
+                    try {
+                    if (el.setAttribute) el.setAttribute('data-huopa-rewritten', '1');
+                    } catch {}
+                }
+
+                function rewriteUrlSafe(url, serverUrl, baseUrl) {
+                    try {
+                    if (!url || /^(data|javascript|wss?|blob):/i.test(url)) return url;
+                    const absoluteUrl = new URL(url, baseUrl).href;
+                    if (absoluteUrl.startsWith(serverUrl)) return url;
+                    return \`\${serverUrl}?url=\${encodeURIComponent(absoluteUrl)}\`;
+                    } catch {
+                    return url;
+                    }
+                }
+
+                function rewriteCss(css) {
+                    if (!css) return css;
+                    try {
+                    return css.replace(/url\\(\\s*(['"]?)(.*?)\\1\s*\\)/g, (_, quote, url) => {
+                        const clean = url.trim();
+                        if (/^data:/i.test(clean)) return \`url(\${url})\`;
+                        return \`url(\${rewriteUrlSafe(clean, serverUrl, targetUrl)})\`;
+                    });
+                    } catch {
+                    return css;
+                    }
+                }
+
+                function rewriteElement(el) {
+                    if (!shouldRewrite(el)) return;
+
+                    if (el.tagName && el.tagName.toLowerCase() === "title") {
+                    window.setTitle(el.textContent);
+                    markRewritten(el);
+                    return;
+                    }
+
+                    // attributes
+                    try {
+                    for (const [tag, attr] of Object.entries(attrMap)) {
+                        if (el.tagName && el.tagName.toLowerCase() === tag) {
+                        let val = el.getAttribute && el.getAttribute(attr);
+                        if (val && !/^(data:|javascript:|ws:|wss:)/i.test(val)) {
+                            el.setAttribute(attr, rewriteUrlSafe(val, serverUrl, targetUrl));
+                        }
+                        }
+                    }
+                    } catch { }
+
+                    // inline styles
+                    try {
+                    if (el.hasAttribute && el.hasAttribute("style")) {
+                        el.setAttribute("style", rewriteCss(el.getAttribute("style")));
+                    }
+                    } catch {}
+
+                    // style tag contents
+                    if (el.tagName && el.tagName.toLowerCase() === "style") {
+                        if (el.hasAttribute("data-emotion") || el.hasAttribute("data-s")) {
+                            markRewritten(el);
+                            return;
+                        }
+                        try {
+                        el.textContent = rewriteCss(el.textContent);
+                        } catch {}
+                    }
+
+                    // srcset handling
+                    try {
+                    const tagLower = el.tagName && el.tagName.toLowerCase();
+                    if (tagLower && ["img", "source"].includes(tagLower)) {
+                        let srcset = el.getAttribute && el.getAttribute("srcset");
+                        if (srcset) {
+                        let rewritten = srcset
+                            .split(",")
+                            .map(entry => {
+                            let [url, size] = entry.trim().split(/\s+/, 2);
+                            return rewriteUrlSafe(url, serverUrl, targetUrl) + (size ? " " + size : "");
+                            })
+                            .join(", ");
+                        el.setAttribute("srcset", rewritten);
+                        }
+                    }
+                    } catch {}
+
+                    markRewritten(el);
+                }
+
+                try {
+                    document.querySelectorAll("*:not([data-huopa-rewritten])").forEach(rewriteElement);
+                } catch {}
+
+                const observer = new MutationObserver(mutations => {
+                    const toRewrite = [];
+
+                    for (const mutation of mutations) {
+                    if (mutation.type === "childList") {
+                        mutation.addedNodes.forEach(node => {
+                        if (node.nodeType === Node.ELEMENT_NODE && shouldRewrite(node)) {
+                            toRewrite.push(node);
+                        }
+                        });
+                    } else if (mutation.type === "characterData" && mutation.target.parentNode?.tagName === "TITLE") {
+                        window.setTitle(mutation.target.parentNode.textContent);
+                    }
+                    }
+
+                    if (toRewrite.length === 0) return;
+
+                    observer.disconnect();
+                    try {
+                    for (const node of toRewrite) {
+                        if (shouldRewrite(node)) rewriteElement(node);
+                        try {
+                        node.querySelectorAll && node.querySelectorAll("*:not([data-huopa-rewritten])").forEach(rewriteElement);
+                        } catch {}
+                    }
+                    } finally {
+                    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+                    }
+                });
+
+                observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+
+                const original = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, "src");
+
+                Object.defineProperty(HTMLScriptElement.prototype, "src", {
+                    set(value) {
+                        try {
+                            const absolute = new URL(value, targetUrl).href;
+
+                            if (!absolute.startsWith(serverUrl)) {
+                                const proxied = \`\${serverUrl}?url=\${encodeURIComponent(absolute)}&pageBase=\${encodeURIComponent(targetUrl)}\`;
+                                return original.set.call(this, proxied);
+                            }
+                        } catch (err) {
+                            console.warn("[huopaproxy] script.src rewrite error:", err);
+                        }
+
+                        return original.set.call(this, value);
+                    },
+                    get() {
+                        return original.get.call(this);
+                    },
+                    configurable: true,
+                    enumerable: true
+                });
+
+            })();
+
+        `;
+
+        const scriptEl = targetWindow.document.createElement("script");
+        scriptEl.textContent = script;
+        try {
+            targetWindow.document.body.appendChild(scriptEl);
+        } catch {}
     }
 
-    async function loadPage(rawRemoteUrl, search = false) {
+
+    async function loadPage(rawRemoteUrl) {
         let remoteUrl = rawRemoteUrl;
 
-        if (true) {
-            if (remoteUrl.includes(" ") || !remoteUrl.includes(".")) {
-            remoteUrl = "startpage.com/sp/search?q=" + rawRemoteUrl.replaceAll(" ", "+");
-            }
-        }
-        if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
-            remoteUrl = "http://" + remoteUrl;
-        }
-        if (remoteUrl === "about:blank") {
-            if (document.getElementById("page")) document.getElementById("page").remove();
+        if (rawRemoteUrl === "about:blank") {
+            if (document.getElementById(selectedTab)) document.getElementById(selectedTab).remove();
             return;
         }
-
+        if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://") && !remoteUrl.includes(" ") && remoteUrl.includes(".")) {
+            remoteUrl = "http://" + remoteUrl;
+        }
         const raw = await fetch(server.href + "?url=" + encodeURIComponent(remoteUrl), {
             credentials: 'include'
         });
+        urls[selectedTab] = remoteUrl;
         const html = await raw.text();
         renderIntoIframe(html, remoteUrl);
     }
-
+    function isValidURL(str) {
+        try {
+            const data = new URL(str);
+            if (data.protocol.startsWith("http")) return true;
+            return false;
+        } catch {
+            return false;
+        }
+    }
     window.loadPage = loadPage;
+    function setTitle(content) {
+        title = content;
+    }
+    window.setTitle = setTitle;
     loadPage(targetUrl);
-  </script>
+
+    window.addEventListener("message", async (e) => {
+        if (!e?.source) return;
+
+        const type = e.data?.type
+        switch (type) {
+            case "openURL":
+                loadPage(e.data.url);
+                break;
+        
+            case "getTitle":
+                window.parent.postMessage({ type: "getTitle", data: title }, "*");
+                break;
+            default:
+                console.warn("Unknown data sent from parent.");
+                break;
+        }
+
+        console.log(e);
+    })
+</script>
 </body>
 </html>
