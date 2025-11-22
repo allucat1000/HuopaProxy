@@ -39,6 +39,7 @@
     let newTabId = 1;
     let currentUrl = null;
     let title = targetUrl;
+    let history = [targetUrl];
     const serverUrl = params.get("server") || "https://allucat1000-huopaproxy-29.deno.dev/proxy";
     const server = new URL(serverUrl);
 
@@ -460,9 +461,17 @@
             credentials: 'include'
         });
         urls[selectedTab] = remoteUrl;
+        history.push(rawRemoteUrl);
         const html = await raw.text();
         renderIntoIframe(html, remoteUrl);
     }
+
+    async function goBack() {
+        history.slice(0, -1);
+        await loadPage(history.reverse()[0]);
+        history.slice(0, -1);
+    }
+
     function isValidURL(str) {
         try {
             const data = new URL(str);
@@ -491,6 +500,11 @@
             case "getTitle":
                 window.parent.postMessage({ type: "getTitle", data: title }, "*");
                 break;
+
+            case "return":
+                goBack();
+                break;
+
             default:
                 console.warn("Unknown data sent from parent.");
                 break;
