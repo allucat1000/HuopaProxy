@@ -840,11 +840,12 @@
         };
 
         // Patch XMLHttpRequest
-        const origOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+        const origOpen = win.XMLHttpRequest.prototype.open;
+        win.XMLHttpRequest.prototype.open = function(method, url, ...rest) {
             let rewrittenUrl = url;
             try {
                 rewrittenUrl = rewriteUrl(serverUrl, url, remoteUrl);
+                console.log(`[huopaproxy] patch XMLHTTPReq open ${url} -> ${rewrittenUrl}`);
             } catch (e) {
                 siteLogs[id].push([
                     "error",
@@ -915,6 +916,20 @@
                 const serverUrl = "${serverUrl}";
                 const targetUrl = "${targetUrl}";
  
+                const origAppend = Element.prototype.appendChild;
+
+                Element.prototype.appendChild = function (child) {
+                    if (!child?.tagName) return origAppend.call(this, child);
+
+                    const tag = child.tagName.toLowerCase();
+
+                    if (attrMap[tag]) rewriteElement(child);
+
+                    //console.log(child.src, child.href);
+
+                    return origAppend.call(this, child);
+                };
+                                
 
                 function shouldRewrite(el) {
                     try {
@@ -964,6 +979,8 @@
                     markRewritten(el);
                     return;
                     }
+
+                    console.log(el.src, el.href)
 
                     // attributes
                     try {
@@ -1059,9 +1076,9 @@
                     set(value) {
                         try {
                             const absolute = new URL(value, targetUrl).href;
-
                             if (!absolute.startsWith(serverUrl)) {
                                 const proxied = \`\${serverUrl}?url=\${encodeURIComponent(absolute)}&pageBase=\${encodeURIComponent(targetUrl)}\`;
+                                console.log(\`[huopaproxy] rewrite \${value} -> \${proxied}\`)
                                 return original.set.call(this, proxied);
                             }
                         } catch (err) {

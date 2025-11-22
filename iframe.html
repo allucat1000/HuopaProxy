@@ -26,10 +26,6 @@
         let title = null;
         const frame = document.getElementById("huopaproxy");
         frame.onload = async () => {
-            frame.contentWindow.postMessage({
-                type: "openURL",
-                url: "https://google.com"
-            }, "*");
             setTimeout(() => frame.contentWindow.postMessage({
                 type: "getTitle",
             }, "*"), 2000);
