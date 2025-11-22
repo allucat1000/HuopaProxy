@@ -923,6 +923,8 @@
 
                     const tag = child.tagName.toLowerCase();
 
+                    console.warn(child.href)
+
                     if (attrMap[tag]) rewriteElement(child);
 
                     //console.log(child.src, child.href);
@@ -979,8 +981,6 @@
                     markRewritten(el);
                     return;
                     }
-
-                    console.log(el.src, el.href)
 
                     // attributes
                     try {

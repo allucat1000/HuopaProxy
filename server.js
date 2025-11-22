@@ -500,29 +500,30 @@ async function handleProxy(req, res, method) {
 
             for (const [tag, attr] of Object.entries(attrMap)) {
               $(tag).each((_, el) => {
-                  const $el = $(el);
-                  const val = $el.attr(attr);
+                const $el = $(el);
+                const val = $el.attr(attr);
 
-                  if (!val) return;
+                if (!val) return;
 
-                  if (val.startsWith(serverUrl)) return;
+                if (val.startsWith(serverUrl)) return;
 
-                  if (/^(data:|javascript:|blob:)/i.test(val)) return;
+                if (/^(data:|javascript:|blob:)/i.test(val)) return;
 
 
-                  // rewrite
-                  try {
-                      const resolved = new URL(val, targetUrl).href;
+                try {
+                  const resolved = new URL(val, targetUrl).href;
 
-                      const rewrittenUrl = new URL(serverUrl);
-                      rewrittenUrl.searchParams.set("url", resolved);
-                      rewrittenUrl.searchParams.set("pageBase", targetUrl);
+                  const rewrittenUrl = new URL(serverUrl);
+                  rewrittenUrl.searchParams.set("url", resolved);
+                  rewrittenUrl.searchParams.set("pageBase", targetUrl);
 
-                      $el.attr(attr, rewrittenUrl.href);
+                  console.log(`rewritten: ${rewrittenUrl.href}, orig: ${val}`);
 
-                  } catch (e) {
-                      console.warn("rewrite error:", e);
-                  }
+                  $el.attr(attr, rewrittenUrl.href);
+
+                } catch (e) {
+                  console.warn("rewrite error:", e);
+                }
               });
             }
             $("style").each((_, el) => {
