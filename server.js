@@ -297,7 +297,7 @@ function replaceLocation(code, targetUrl) {
 	  ) {
 		const leftObj = node.left.object;
 		const isWindowLocation =
-		  (leftObj.type === "MemberExpression" &&
+		  (leftObj?.type === "MemberExpression" &&
 			leftObj.object?.type === "Identifier" &&
 			leftObj.object.name === "window" &&
 			leftObj.property?.type === "Identifier" &&
@@ -406,7 +406,7 @@ async function handleProxy(req, res, method) {
     if (!targetUrl) return res.status(400).send(missingUrlHtml);
 
 	try {
-        if (targetUrl.startsWith("file://")) return res.status(404).send("Unable to access local file!");
+        if (targetUrl.startsWith("file://") || targetUrl.startsWith("http://file://")) return res.status(404).send("Unable to access local file!");
 
         const targetOrigin = new URL(targetUrl).origin;
 
@@ -516,8 +516,6 @@ async function handleProxy(req, res, method) {
                   const rewrittenUrl = new URL(serverUrl);
                   rewrittenUrl.searchParams.set("url", resolved);
                   rewrittenUrl.searchParams.set("pageBase", targetUrl);
-
-                  console.log(`rewritten: ${rewrittenUrl.href}, orig: ${val}`);
 
                   $el.attr(attr, rewrittenUrl.href);
 

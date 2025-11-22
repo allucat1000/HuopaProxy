@@ -927,8 +927,6 @@
 
                     if (attrMap[tag]) rewriteElement(child);
 
-                    //console.log(child.src, child.href);
-
                     return origAppend.call(this, child);
                 };
                                 
@@ -977,28 +975,28 @@
                     if (!shouldRewrite(el)) return;
 
                     if (el.tagName && el.tagName.toLowerCase() === "title") {
-                    window.setTitle(el.textContent);
-                    markRewritten(el);
-                    return;
+                        window.setTitle(el.textContent);
+                        markRewritten(el);
+                        return;
                     }
 
                     // attributes
                     try {
                     for (const [tag, attr] of Object.entries(attrMap)) {
                         if (el.tagName && el.tagName.toLowerCase() === tag) {
-                        let val = el.getAttribute && el.getAttribute(attr);
-                        if (val && !/^(data:|javascript:|ws:|wss:)/i.test(val)) {
-                            el.setAttribute(attr, rewriteUrlSafe(val, serverUrl, targetUrl));
-                        }
+                            let val = el.getAttribute && el.getAttribute(attr);
+                            if (val && !/^(data:|javascript:|ws:|wss:)/i.test(val)) {
+                                el.setAttribute(attr, rewriteUrlSafe(val, serverUrl, targetUrl));
+                            }
                         }
                     }
                     } catch { }
 
                     // inline styles
                     try {
-                    if (el.hasAttribute && el.hasAttribute("style")) {
-                        el.setAttribute("style", rewriteCss(el.getAttribute("style")));
-                    }
+                        if (el.hasAttribute && el.hasAttribute("style")) {
+                            el.setAttribute("style", rewriteCss(el.getAttribute("style")));
+                        }
                     } catch {}
 
                     // style tag contents
@@ -1008,7 +1006,7 @@
                             return;
                         }
                         try {
-                        el.textContent = rewriteCss(el.textContent);
+                            el.textContent = rewriteCss(el.textContent);
                         } catch {}
                     }
 
@@ -1018,14 +1016,14 @@
                     if (tagLower && ["img", "source"].includes(tagLower)) {
                         let srcset = el.getAttribute && el.getAttribute("srcset");
                         if (srcset) {
-                        let rewritten = srcset
-                            .split(",")
-                            .map(entry => {
-                            let [url, size] = entry.trim().split(/\s+/, 2);
-                            return rewriteUrlSafe(url, serverUrl, targetUrl) + (size ? " " + size : "");
-                            })
-                            .join(", ");
-                        el.setAttribute("srcset", rewritten);
+                            let rewritten = srcset
+                                .split(",")
+                                .map(entry => {
+                                let [url, size] = entry.trim().split(/\s+/, 2);
+                                return rewriteUrlSafe(url, serverUrl, targetUrl) + (size ? " " + size : "");
+                                })
+                                .join(", ");
+                            el.setAttribute("srcset", rewritten);
                         }
                     }
                     } catch {}
@@ -1033,7 +1031,6 @@
                     markRewritten(el);
                 }
 
-                // initial pass: rewrite everything not yet rewritten
                 try {
                     document.querySelectorAll("*:not([data-huopa-rewritten])").forEach(rewriteElement);
                 } catch {}
