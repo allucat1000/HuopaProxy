@@ -886,9 +886,13 @@
         const noop = () => {};
 
         win.addEventListener("popstate", e => {} );
-        injectMutationObserver(win, serverUrl + "?url=" + encodeURIComponent(remoteUrl), serverUrl, targetUrl)
+        injectMutationObserver(
+            win,
+            serverUrl,
+            remoteUrl
+        );
     }
-    function injectMutationObserver(targetWindow, rewriteUrl, serverUrl, targetUrl) {
+    function injectMutationObserver(targetWindow, serverUrl, targetUrl) {
         const attrMap = {
             a: "href",
             link: "href",
@@ -905,96 +909,176 @@
             form: "action",
             area: "href",
         };
-
         const script = `
             (function() {
                 const attrMap = ${JSON.stringify(attrMap)};
                 const serverUrl = "${serverUrl}";
                 const targetUrl = "${targetUrl}";
+ 
+
+                function shouldRewrite(el) {
+                    try {
+                    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+                    if (el.hasAttribute && el.hasAttribute('data-huopa-rewritten')) return false;
+                    return true;
+                    } catch {
+                    return false;
+                    }
+                }
+
+                function markRewritten(el) {
+                    try {
+                    if (el.setAttribute) el.setAttribute('data-huopa-rewritten', '1');
+                    } catch {}
+                }
 
                 function rewriteUrlSafe(url, serverUrl, baseUrl) {
                     try {
-                        if (!url || /^(data|javascript|wss?|blob):/i.test(url)) return url;
-
-                        const absoluteUrl = new URL(url, baseUrl).href;
-                        if (absoluteUrl.startsWith(serverUrl)) return url;
-                        return \`\${serverUrl}?url=\${encodeURIComponent(absoluteUrl)}\`;
+                    if (!url || /^(data|javascript|wss?|blob):/i.test(url)) return url;
+                    const absoluteUrl = new URL(url, baseUrl).href;
+                    if (absoluteUrl.startsWith(serverUrl)) return url;
+                    return \`\${serverUrl}?url=\${encodeURIComponent(absoluteUrl)}\`;
                     } catch {
-                        return url;
+                    return url;
                     }
                 }
 
                 function rewriteCss(css) {
-                    return css;
+                    if (!css) return css;
                     try {
-                        return css.replace(/url\(\\s*(['"]?)(.*?)\\1\s*\\)/g, (_, quote, url) => {
-                            let clean = url.trim();
-                            if (clean.startsWith("data:")) return \`url(\${url})\`;
-                            return \`url(\${rewriteUrlSafe(clean, serverUrl, targetUrl)})\`;
-                        });
-                    } catch {}
+                    return css.replace(/url\\(\\s*(['"]?)(.*?)\\1\s*\\)/g, (_, quote, url) => {
+                        const clean = url.trim();
+                        if (/^data:/i.test(clean)) return \`url(\${url})\`;
+                        return \`url(\${rewriteUrlSafe(clean, serverUrl, targetUrl)})\`;
+                    });
+                    } catch {
+                    return css;
+                    }
                 }
 
                 function rewriteElement(el) {
-                    // title changing
+                    if (!shouldRewrite(el)) return;
+
                     if (el.tagName && el.tagName.toLowerCase() === "title") {
-                        window.setTitle(el.textContent);
-                    }
-                    // attributes
-                    for (const [tag, attr] of Object.entries(attrMap)) {
-                        if (el.tagName && el.tagName.toLowerCase() === tag) {
-                            let val = el.getAttribute(attr);
-                            if (val && !val.startsWith("data:") && !val.startsWith("javascript:") && !val.startsWith("ws:") && !val.startsWith("wss:")) {
-                                el.setAttribute(attr, rewriteUrlSafe(val, serverUrl, targetUrl));
-                            }
-                        }
+                    window.setTitle(el.textContent);
+                    markRewritten(el);
+                    return;
                     }
 
+                    // attributes
+                    try {
+                    for (const [tag, attr] of Object.entries(attrMap)) {
+                        if (el.tagName && el.tagName.toLowerCase() === tag) {
+                        let val = el.getAttribute && el.getAttribute(attr);
+                        if (val && !/^(data:|javascript:|ws:|wss:)/i.test(val)) {
+                            el.setAttribute(attr, rewriteUrlSafe(val, serverUrl, targetUrl));
+                        }
+                        }
+                    }
+                    } catch { }
+
                     // inline styles
+                    try {
                     if (el.hasAttribute && el.hasAttribute("style")) {
                         el.setAttribute("style", rewriteCss(el.getAttribute("style")));
                     }
+                    } catch {}
 
-                    // style tags
+                    // style tag contents
                     if (el.tagName && el.tagName.toLowerCase() === "style") {
+                        if (el.hasAttribute("data-emotion") || el.hasAttribute("data-s")) {
+                            markRewritten(el);
+                            return;
+                        }
+                        try {
                         el.textContent = rewriteCss(el.textContent);
+                        } catch {}
                     }
 
-                    // srcsets
-                    if (el.tagName && ["img", "source"].includes(el.tagName.toLowerCase())) {
-                        let srcset = el.getAttribute("srcset");
+                    // srcset handling
+                    try {
+                    const tagLower = el.tagName && el.tagName.toLowerCase();
+                    if (tagLower && ["img", "source"].includes(tagLower)) {
+                        let srcset = el.getAttribute && el.getAttribute("srcset");
                         if (srcset) {
-                            let rewritten = srcset
-                                .split(",")
-                                .map(entry => {
-                                    let [url, size] = entry.trim().split(/\\s+/, 2);
-                                    return rewriteUrlSafe(url, serverUrl, targetUrl) + (size ? " " + size : "");
-                                })
-                                .join(", ");
-                            el.setAttribute("srcset", rewritten);
+                        let rewritten = srcset
+                            .split(",")
+                            .map(entry => {
+                            let [url, size] = entry.trim().split(/\s+/, 2);
+                            return rewriteUrlSafe(url, serverUrl, targetUrl) + (size ? " " + size : "");
+                            })
+                            .join(", ");
+                        el.setAttribute("srcset", rewritten);
                         }
                     }
+                    } catch {}
+
+                    markRewritten(el);
                 }
 
+                // initial pass: rewrite everything not yet rewritten
+                try {
+                    document.querySelectorAll("*:not([data-huopa-rewritten])").forEach(rewriteElement);
+                } catch {}
+
                 const observer = new MutationObserver(mutations => {
+                    const toRewrite = [];
+
                     for (const mutation of mutations) {
-                        if (mutation.type === "childList") {
-                            mutation.addedNodes.forEach(node => {
-                                if (node.nodeType === Node.ELEMENT_NODE) {
-                                    rewriteElement(node);
-                                    node.querySelectorAll && node.querySelectorAll("*").forEach(rewriteElement);
-                                }
-                            });
-                        } else if (mutation.type === "characterData" && mutation.target.parentNode?.tagName === "TITLE") {
-                            window.setTitle(mutation.target.parentNode.textContent);
+                    if (mutation.type === "childList") {
+                        mutation.addedNodes.forEach(node => {
+                        if (node.nodeType === Node.ELEMENT_NODE && shouldRewrite(node)) {
+                            toRewrite.push(node);
                         }
+                        });
+                    } else if (mutation.type === "characterData" && mutation.target.parentNode?.tagName === "TITLE") {
+                        window.setTitle(mutation.target.parentNode.textContent);
+                    }
+                    }
+
+                    if (toRewrite.length === 0) return;
+
+                    observer.disconnect();
+                    try {
+                    for (const node of toRewrite) {
+                        if (shouldRewrite(node)) rewriteElement(node);
+                        try {
+                        node.querySelectorAll && node.querySelectorAll("*:not([data-huopa-rewritten])").forEach(rewriteElement);
+                        } catch {}
+                    }
+                    } finally {
+                    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
                     }
                 });
 
                 observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 
-                document.querySelectorAll("*").forEach(rewriteElement);
+                const original = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, "src");
+
+                Object.defineProperty(HTMLScriptElement.prototype, "src", {
+                    set(value) {
+                        try {
+                            const absolute = new URL(value, targetUrl).href;
+
+                            if (!absolute.startsWith(serverUrl)) {
+                                const proxied = \`\${serverUrl}?url=\${encodeURIComponent(absolute)}&pageBase=\${encodeURIComponent(targetUrl)}\`;
+                                return original.set.call(this, proxied);
+                            }
+                        } catch (err) {
+                            console.warn("[huopaproxy] script.src rewrite error:", err);
+                        }
+
+                        return original.set.call(this, value);
+                    },
+                    get() {
+                        return original.get.call(this);
+                    },
+                    configurable: true,
+                    enumerable: true
+                });
+
             })();
+
         `;
 
         const scriptEl = targetWindow.document.createElement("script");
