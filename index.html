@@ -927,6 +927,8 @@
 
                     if (attrMap[tag]) rewriteElement(child);
 
+                    child.setAttribute("data-huopa-rewritten", "1");
+
                     return origAppend.call(this, child);
                 };
                                 
@@ -980,12 +982,14 @@
                         return;
                     }
 
+                    const serverOrigin = new URL(serverUrl).origin;
                     // attributes
                     try {
                     for (const [tag, attr] of Object.entries(attrMap)) {
                         if (el.tagName && el.tagName.toLowerCase() === tag) {
                             let val = el.getAttribute && el.getAttribute(attr);
                             if (val && !/^(data:|javascript:|ws:|wss:)/i.test(val)) {
+                                if (el[attr].startsWith(serverOrigin)) continue;
                                 el.setAttribute(attr, rewriteUrlSafe(val, serverUrl, targetUrl));
                             }
                         }
